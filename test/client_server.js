@@ -1,16 +1,16 @@
 var _      = require("underscore")
-  , ndata  = require('../index')
+  , scBroker  = require('../index')
   , assert = require('assert')
   , conf   = {port: 9002}
   , server
   , client;
 
-describe('ndata client', function () {
+describe('sc-broker client', function () {
 
   before("run the server before start", function (done) {
-    server = ndata.createServer(conf);
+    server = scBroker.createServer(conf);
     server.on("ready", function () {
-      client = ndata.createClient(conf);
+      client = scBroker.createClient(conf);
       done();
     });
   });
@@ -20,7 +20,7 @@ describe('ndata client', function () {
     done();
   });
 
-  describe('ndata#createServer', function () {
+  describe('sc-broker#createServer', function () {
     it('should provide server.on', function (done) {
       assert(_.isFunction(server.on), true);
       done();
@@ -32,9 +32,9 @@ describe('ndata client', function () {
     });
   });
 
-  describe('ndata#createClient', function () {
-    it('should provide ndata.createClient', function (done) {
-      assert.equal(_.isFunction(ndata.createClient), true);
+  describe('sc-broker#createClient', function () {
+    it('should provide scBroker.createClient', function (done) {
+      assert.equal(_.isFunction(scBroker.createClient), true);
       done();
     });
   });
@@ -557,7 +557,7 @@ describe('ndata client', function () {
 
   describe('client#end', function () {
     it('should return no error', function (done) {
-      ndata.createClient(conf).end(function(err){
+      scBroker.createClient(conf).end(function(err){
         assert.equal(_.isUndefined(err), true);
         done();
       });

@@ -150,7 +150,7 @@ var Client = function (options) {
     }
   };
 
-  // Recovers subscriptions after nData server crash
+  // Recovers subscriptions after scBroker server crash
   self._resubscribeAll = function () {
     var hasFailed = false;
     var handleResubscribe = function (channel, err) {
@@ -158,7 +158,7 @@ var Client = function (options) {
         self._subMap.remove(channel);
         if (!hasFailed) {
           hasFailed = true;
-          self.emit('error', new Error('Failed to resubscribe to nData server channels'));
+          self.emit('error', new Error('Failed to resubscribe to scBroker server channels'));
         }
       }
     };
@@ -243,7 +243,7 @@ var Client = function (options) {
         self._commandMap[command.id] = request;
 
         request.timeout = setTimeout(function () {
-          var error = 'nData Error - The ' + command.action + ' action timed out';
+          var error = 'scBroker Error - The ' + command.action + ' action timed out';
           delete request.callback;
           if (self._commandMap.hasOwnProperty(command.id)) {
             delete self._commandMap[command.id];
