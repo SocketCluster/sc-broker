@@ -105,7 +105,7 @@ var Client = function (options) {
     self._timeout = 10000;
   }
 
-  self._subMap = new FlexiMap();
+  self._subscriptionMap = {};
   self._commandMap = {};
   self._pendingActions = [];
 
@@ -131,42 +131,23 @@ var Client = function (options) {
     self._pendingActions = [];
   };
 
-  self._getAllChannels = function (channelMap) {
-    if (channelMap === true) {
-      return [[]];
-    } else {
-      var channels = [];
-      var subChannels, len;
-      for (var key in channelMap) {
-        if (channelMap.hasOwnProperty(key)) {
-          subChannels = self._getAllChannels(channelMap[key]);
-          len = subChannels.length;
-          for (var i = 0; i < len; i++) {
-            channels.push([key].concat(subChannels[i]));
-          }
-        }
-      }
-      return channels;
-    }
-  };
-
   // Recovers subscriptions after scBroker server crash
   self._resubscribeAll = function () {
     var hasFailed = false;
     var handleResubscribe = function (channel, err) {
       if (err) {
-        self._subMap.remove(channel);
+        delete self._subscriptionMap[channel];
         if (!hasFailed) {
           hasFailed = true;
           self.emit('error', new Error('Failed to resubscribe to scBroker server channels'));
         }
       }
     };
-    var channelMap = self._subMap.getAll();
-    var channels = self._getAllChannels(channelMap);
-    var len = channels.length;
-    for (var i = 0; i < len; i++) {
-      self.subscribe(channels[i], handleResubscribe.bind(self, channels[i]), true);
+    var channels = self._subscriptionMap;
+    for (var i in channels) {
+      if (channels.hasOwnProperty(i)) {
+        self.subscribe(i, handleResubscribe.bind(self, i), true);
+      }
     }
   };
 
@@ -286,7 +267,7 @@ var Client = function (options) {
         });
       }
     } else {
-      self._subMap.set(channel, true);
+      self._subscriptionMap[channel] = true;
 
       var command = {
         channel: channel,
@@ -295,7 +276,7 @@ var Client = function (options) {
 
       var callback = function (err) {
         if (err) {
-          self._subMap.remove(channel);
+          delete self._subscriptionMap[channel];
           ackCallback && ackCallback(err);
           self.emit('subscribeFail', err, channel);
         } else {
@@ -311,7 +292,7 @@ var Client = function (options) {
     // No need to unsubscribe if the server is disconnected
     // The server cleans up automatically in case of disconnection
     if (self.isSubscribed(channel) && self._connected) {
-      self._subMap.remove(channel);
+      delete self._subscriptionMap[channel];
 
       var command = {
         action: 'unsubscribe',
@@ -320,7 +301,7 @@ var Client = function (options) {
 
       var cb = function (err) {
         if (err) {
-          self._subMap.set(channel, true);
+          self._subscriptionMap[channel] = true;
           ackCallback && ackCallback(err);
           self.emit('unsubscribeFail');
         } else {
@@ -331,7 +312,7 @@ var Client = function (options) {
 
       self._exec(command, cb);
     } else {
-      self._subMap.remove(channel);
+      delete self._subscriptionMap[channel];
       if (ackCallback) {
         self._errorDomain.run(function () {
           ackCallback();
@@ -341,11 +322,11 @@ var Client = function (options) {
   };
 
   self.subscriptions = function () {
-    return Object.keys(self._subMap.getAll() || {});
+    return Object.keys(self._subscriptionMap || {});
   };
 
   self.isSubscribed = function (channel) {
-    return self._subMap.hasKey(channel);
+    return !!self._subscriptionMap[channel];
   };
 
   self.publish = function (channel, value, callback) {

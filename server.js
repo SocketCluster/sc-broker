@@ -63,23 +63,25 @@ var send = function (socket, object) {
 };
 
 var dataMap = new FlexiMap();
-var channelMap = new FlexiMap();
+var subscribers = {};
 
 var dataExpirer = new ExpiryManager();
 
 var addListener = function (socket, channel) {
-  channelMap.set(['sockets', socket.id].concat(channel), socket);
+  if (subscribers[socket.id] == null) {
+    subscribers[socket.id] = {};
+  }
+  subscribers[socket.id][channel] = socket;
 };
 
 var hasListener = function (socket, channel) {
-  return channelMap.hasKey(['sockets', socket.id].concat(channel));
+  return !!(subscribers[socket.id] && subscribers[socket.id][channel]);
 };
 
 var anyHasListener = function (channel) {
-  var sockets = channelMap.get('sockets');
-  for (var i in sockets) {
-    if (sockets.hasOwnProperty(i)) {
-      if (channelMap.hasKey(['sockets', i].concat(channel))) {
+  for (var i in subscribers) {
+    if (subscribers.hasOwnProperty(i)) {
+      if (subscribers[i][channel]) {
         return true;
       }
     }
@@ -88,22 +90,21 @@ var anyHasListener = function (channel) {
 };
 
 var removeListener = function (socket, channel) {
-  channelMap.remove(['sockets', socket.id].concat(channel));
+  if (subscribers[socket.id]) {
+    delete subscribers[socket.id][channel];
+  }
 };
 
 var removeAllListeners = function (socket) {
-  var subMap = channelMap.remove(['sockets', socket.id]);
+  var subMap = subscribers[socket.id];
   var channels = [];
   for (var i in subMap) {
     if (subMap.hasOwnProperty(i)) {
       channels.push(i);
     }
   }
+  delete subscribers[socket.id];
   return channels;
-};
-
-var getListeners = function (socket) {
-  return channelMap.get(['sockets', socket.id]);
 };
 
 var run = function (query, baseKey) {
@@ -114,7 +115,7 @@ var run = function (query, baseKey) {
     rebasedDataMap = dataMap;
   }
 
-  return Function('"use strict"; return (' + query + ')(arguments[0], arguments[1], arguments[2]);')(rebasedDataMap, dataExpirer, channelMap);
+  return Function('"use strict"; return (' + query + ')(arguments[0], arguments[1], arguments[2]);')(rebasedDataMap, dataExpirer, subscribers);
 };
 
 var Broker = function () {
@@ -128,7 +129,7 @@ var Broker = function () {
 
   this.dataMap = dataMap;
   this.dataExpirer = dataExpirer;
-  this.channelMap = channelMap;
+  this.subscribers = subscribers;
 };
 
 Broker.prototype = Object.create(EventEmitter.prototype);
@@ -146,16 +147,12 @@ Broker.prototype.run = function (query, baseKey) {
 };
 
 Broker.prototype.publish = function (channel, message) {
-  var sockets = channelMap.get('sockets');
-  var sock, channelKey;
-  for (var i in sockets) {
-    if (sockets.hasOwnProperty(i)) {
-      channelKey = ['sockets', i].concat(channel);
-      if (channelMap.hasKey(channelKey)) {
-        sock = channelMap.get(channelKey);
-        if (sock instanceof com.ComSocket) {
-          send(sock, {type: 'message', channel: channel, value: message});
-        }
+  var sock;
+  for (var i in subscribers) {
+    if (subscribers.hasOwnProperty(i)) {
+      sock = subscribers[i][channel];
+      if (sock && sock instanceof com.ComSocket) {
+        send(sock, {type: 'message', channel: channel, value: message});
       }
     }
   }
@@ -376,7 +373,7 @@ var actions = {
   },
 
   isSubscribed: function (command, socket) {
-    var result = channelMap.hasKey(['sockets', socket.id, command.channel]);
+    var result = hasListener(socket, command.channel);
     send(socket, {id: command.id, type: 'response', action: 'isSubscribed', channel: command.channel, value: result});
   },
 
