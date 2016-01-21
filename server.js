@@ -63,25 +63,25 @@ var send = function (socket, object) {
 };
 
 var dataMap = new FlexiMap();
-var subscribers = {};
+var subscriptions = {};
 
 var dataExpirer = new ExpiryManager();
 
 var addListener = function (socket, channel) {
-  if (subscribers[socket.id] == null) {
-    subscribers[socket.id] = {};
+  if (subscriptions[socket.id] == null) {
+    subscriptions[socket.id] = {};
   }
-  subscribers[socket.id][channel] = socket;
+  subscriptions[socket.id][channel] = socket;
 };
 
 var hasListener = function (socket, channel) {
-  return !!(subscribers[socket.id] && subscribers[socket.id][channel]);
+  return !!(subscriptions[socket.id] && subscriptions[socket.id][channel]);
 };
 
 var anyHasListener = function (channel) {
-  for (var i in subscribers) {
-    if (subscribers.hasOwnProperty(i)) {
-      if (subscribers[i][channel]) {
+  for (var i in subscriptions) {
+    if (subscriptions.hasOwnProperty(i)) {
+      if (subscriptions[i][channel]) {
         return true;
       }
     }
@@ -90,20 +90,20 @@ var anyHasListener = function (channel) {
 };
 
 var removeListener = function (socket, channel) {
-  if (subscribers[socket.id]) {
-    delete subscribers[socket.id][channel];
+  if (subscriptions[socket.id]) {
+    delete subscriptions[socket.id][channel];
   }
 };
 
 var removeAllListeners = function (socket) {
-  var subMap = subscribers[socket.id];
+  var subMap = subscriptions[socket.id];
   var channels = [];
   for (var i in subMap) {
     if (subMap.hasOwnProperty(i)) {
       channels.push(i);
     }
   }
-  delete subscribers[socket.id];
+  delete subscriptions[socket.id];
   return channels;
 };
 
@@ -115,7 +115,7 @@ var run = function (query, baseKey) {
     rebasedDataMap = dataMap;
   }
 
-  return Function('"use strict"; return (' + query + ')(arguments[0], arguments[1], arguments[2]);')(rebasedDataMap, dataExpirer, subscribers);
+  return Function('"use strict"; return (' + query + ')(arguments[0], arguments[1], arguments[2]);')(rebasedDataMap, dataExpirer, subscriptions);
 };
 
 var Broker = function () {
@@ -129,7 +129,7 @@ var Broker = function () {
 
   this.dataMap = dataMap;
   this.dataExpirer = dataExpirer;
-  this.subscribers = subscribers;
+  this.subscriptions = subscriptions;
 };
 
 Broker.prototype = Object.create(EventEmitter.prototype);
@@ -148,9 +148,9 @@ Broker.prototype.run = function (query, baseKey) {
 
 Broker.prototype.publish = function (channel, message) {
   var sock;
-  for (var i in subscribers) {
-    if (subscribers.hasOwnProperty(i)) {
-      sock = subscribers[i][channel];
+  for (var i in subscriptions) {
+    if (subscriptions.hasOwnProperty(i)) {
+      sock = subscriptions[i][channel];
       if (sock && sock instanceof com.ComSocket) {
         send(sock, {type: 'message', channel: channel, value: message});
       }
