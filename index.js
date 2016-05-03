@@ -11,7 +11,18 @@ var Server = function (options) {
   EventEmitter.call(this);
   var self = this;
 
-  var stringArgs = JSON.stringify(options);
+  var serverOptions = {
+    id: options.id,
+    debug: options.debug,
+    socketPath: options.socketPath,
+    expiryAccuracy: options.expiryAccuracy,
+    downgradeToUser: options.downgradeToUser,
+    brokerControllerPath: options.brokerControllerPath,
+    initControllerPath: options.initControllerPath,
+    processTermTimeout: options.processTermTimeout
+  };
+
+  var stringArgs = JSON.stringify(serverOptions);
 
   self.socketPath = options.socketPath;
   if (!self.socketPath) {
@@ -30,7 +41,13 @@ var Server = function (options) {
     execOptions.execArgv.push('--debug=' + options.debug);
   }
 
+  options.brokerOptions.instanceId = options.instanceId;
+
   self._server = fork(__dirname + '/server.js', [stringArgs], execOptions);
+  this._server.send({
+    type: 'initBrokerServer',
+    data: options.brokerOptions
+  });
 
   self._server.on('message', function (value) {
     if (value.event == 'listening') {

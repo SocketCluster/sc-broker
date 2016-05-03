@@ -4,16 +4,14 @@ var PORT;
 if (args.port) {
   PORT = parseInt(args.port);
 }
-var ID = args.id;
-var INSTANCE_ID = args.instanceId;
+var BROKER_ID = args.id;
 var SOCKET_PATH = args.socketPath;
-var SECRET_KEY = args.secretKey;
 var EXPIRY_ACCURACY = args.expiryAccuracy || 1000;
 var BROKER_CONTROLLER_PATH = args.brokerControllerPath;
 var INIT_CONTROLLER_PATH = args.initControllerPath || null;
 var DOWNGRADE_TO_USER = args.downgradeToUser;
 var PROCESS_TERM_TIMEOUT = args.processTermTimeout || 10000;
-var BROKER_OPTIONS = args.brokerOptions;
+var DEBUG_PORT = args.debug || null;
 var INIT_CONTROLLER = null;
 var BROKER_CONTROLLER = null;
 
@@ -118,14 +116,15 @@ var run = function (query, baseKey) {
   return Function('"use strict"; return (' + query + ')(arguments[0], arguments[1], arguments[2]);')(rebasedDataMap, dataExpirer, subscriptions);
 };
 
-var Broker = function () {
+var Broker = function (options) {
   EventEmitter.call(this);
 
-  this.id = ID;
-  this.instanceId = INSTANCE_ID;
-  this.secretKey = SECRET_KEY;
+  this.id = BROKER_ID;
   this.type = 'broker';
-  this.options = BROKER_OPTIONS;
+  this.options = options;
+  this.instanceId = this.options.instanceId;
+  this.secretKey = this.options.secretKey;
+  this.debugPort = DEBUG_PORT;
 
   this.dataMap = dataMap;
   this.dataExpirer = dataExpirer;
@@ -158,31 +157,35 @@ Broker.prototype.publish = function (channel, message) {
   }
 };
 
-var nDataBroker = new Broker();
-errorDomain.add(nDataBroker);
-global.broker = nDataBroker;
+var scBroker;
 
-// Create the controller instances now.
-// This is more symmetric to SocketCluster's worker cluster.
+var initBrokerServer = function (options) {
+  scBroker = new Broker(options);
+  errorDomain.add(scBroker);
+  global.broker = scBroker;
 
-if (INIT_CONTROLLER_PATH != null) {
-  INIT_CONTROLLER = require(INIT_CONTROLLER_PATH);
-  errorDomain.run(function () {
-    INIT_CONTROLLER.run(nDataBroker);
-  });
-}
+  // Create the controller instances now.
+  // This is more symmetric to SocketCluster's worker cluster.
 
-if (BROKER_CONTROLLER_PATH != null) {
-  BROKER_CONTROLLER = require(BROKER_CONTROLLER_PATH);
-  errorDomain.run(function () {
-    BROKER_CONTROLLER.run(nDataBroker);
-  });
-}
+  if (INIT_CONTROLLER_PATH != null) {
+    INIT_CONTROLLER = require(INIT_CONTROLLER_PATH);
+    errorDomain.run(function () {
+      INIT_CONTROLLER.run(scBroker);
+    });
+  }
+
+  if (BROKER_CONTROLLER_PATH != null) {
+    BROKER_CONTROLLER = require(BROKER_CONTROLLER_PATH);
+    errorDomain.run(function () {
+      BROKER_CONTROLLER.run(scBroker);
+    });
+  }
+};
 
 var actions = {
   init: function (command, socket) {
     var result = {id: command.id, type: 'response', action: 'init'};
-    if (command.secretKey == SECRET_KEY || !SECRET_KEY) {
+    if (command.secretKey == scBroker.secretKey) {
       initialized[socket.id] = {};
     } else {
       result.error = 'nData Error - Invalid password was supplied to nData';
@@ -191,7 +194,7 @@ var actions = {
   },
 
   set: function (command, socket) {
-    var result = nDataBroker.dataMap.set(command.key, command.value);
+    var result = scBroker.dataMap.set(command.key, command.value);
     var response = {id: command.id, type: 'response', action: 'set'};
     if (command.getValue) {
       response.value = result;
@@ -200,49 +203,49 @@ var actions = {
   },
 
   expire: function (command, socket) {
-    nDataBroker.dataExpirer.expire(command.keys, command.value);
+    scBroker.dataExpirer.expire(command.keys, command.value);
     var response = {id: command.id, type: 'response', action: 'expire'};
     send(socket, response);
   },
 
   unexpire: function (command, socket) {
-    nDataBroker.dataExpirer.unexpire(command.keys);
+    scBroker.dataExpirer.unexpire(command.keys);
     var response = {id: command.id, type: 'response', action: 'unexpire'};
     send(socket, response);
   },
 
   getExpiry: function (command, socket) {
-    var response = {id: command.id, type: 'response', action: 'getExpiry', value: nDataBroker.dataExpirer.getExpiry(command.key)};
+    var response = {id: command.id, type: 'response', action: 'getExpiry', value: scBroker.dataExpirer.getExpiry(command.key)};
     send(socket, response);
   },
 
   get: function (command, socket) {
-    var result = nDataBroker.dataMap.get(command.key);
+    var result = scBroker.dataMap.get(command.key);
     send(socket, {id: command.id, type: 'response', action: 'get', value: result});
   },
 
   getRange: function (command, socket) {
-    var result = nDataBroker.dataMap.getRange(command.key, command.fromIndex, command.toIndex);
+    var result = scBroker.dataMap.getRange(command.key, command.fromIndex, command.toIndex);
     send(socket, {id: command.id, type: 'response', action: 'getRange', value: result});
   },
 
   getAll: function (command, socket) {
-    send(socket, {id: command.id, type: 'response', action: 'getAll', value: nDataBroker.dataMap.getAll()});
+    send(socket, {id: command.id, type: 'response', action: 'getAll', value: scBroker.dataMap.getAll()});
   },
 
   count: function (command, socket) {
-    var result = nDataBroker.dataMap.count(command.key);
+    var result = scBroker.dataMap.count(command.key);
     send(socket, {id: command.id, type: 'response', action: 'count', value: result});
   },
 
   add: function (command, socket) {
-    var result = nDataBroker.dataMap.add(command.key, command.value);
+    var result = scBroker.dataMap.add(command.key, command.value);
     var response = {id: command.id, type: 'response', action: 'add', value: result};
     send(socket, response);
   },
 
   concat: function (command, socket) {
-    var result = nDataBroker.dataMap.concat(command.key, command.value);
+    var result = scBroker.dataMap.concat(command.key, command.value);
     var response = {id: command.id, type: 'response', action: 'concat'};
     if (command.getValue) {
       response.value = result;
@@ -262,7 +265,7 @@ var actions = {
   run: function (command, socket) {
     var ret = {id: command.id, type: 'response', action: 'run'};
     try {
-      var result = nDataBroker.run(command.value, command.baseKey);
+      var result = scBroker.run(command.value, command.baseKey);
       if (result !== undefined) {
         ret.value = result;
       }
@@ -278,7 +281,7 @@ var actions = {
   },
 
   remove: function (command, socket) {
-    var result = nDataBroker.dataMap.remove(command.key);
+    var result = scBroker.dataMap.remove(command.key);
     if (!command.noAck) {
       var response = {id: command.id, type: 'response', action: 'remove'};
       if (command.getValue) {
@@ -289,7 +292,7 @@ var actions = {
   },
 
   removeRange: function (command, socket) {
-    var result = nDataBroker.dataMap.removeRange(command.key, command.fromIndex, command.toIndex);
+    var result = scBroker.dataMap.removeRange(command.key, command.fromIndex, command.toIndex);
     if (!command.noAck) {
       var response = {id: command.id, type: 'response', action: 'removeRange'};
       if (command.getValue) {
@@ -300,7 +303,7 @@ var actions = {
   },
 
   removeAll: function (command, socket) {
-    nDataBroker.dataMap.removeAll();
+    scBroker.dataMap.removeAll();
     if (!command.noAck) {
       send(socket, {id: command.id, type: 'response', action: 'removeAll'});
     }
@@ -318,7 +321,7 @@ var actions = {
       }
       args.pop();
     }
-    var result = nDataBroker.dataMap.splice.apply(nDataBroker.dataMap, args);
+    var result = scBroker.dataMap.splice.apply(scBroker.dataMap, args);
     if (!command.noAck) {
       var response = {id: command.id, type: 'response', action: 'splice'};
       if (command.getValue) {
@@ -329,7 +332,7 @@ var actions = {
   },
 
   pop: function (command, socket) {
-    var result = nDataBroker.dataMap.pop(command.key);
+    var result = scBroker.dataMap.pop(command.key);
     if (!command.noAck) {
       var response = {id: command.id, type: 'response', action: 'pop'};
       if (command.getValue) {
@@ -340,14 +343,14 @@ var actions = {
   },
 
   hasKey: function (command, socket) {
-    send(socket, {id: command.id, type: 'response', action: 'hasKey', value: nDataBroker.dataMap.hasKey(command.key)});
+    send(socket, {id: command.id, type: 'response', action: 'hasKey', value: scBroker.dataMap.hasKey(command.key)});
   },
 
   subscribe: function (command, socket) {
     var hasListener = anyHasListener(command.channel);
     addListener(socket, command.channel);
     if (!hasListener) {
-      nDataBroker.emit('subscribe', command.channel);
+      scBroker.emit('subscribe', command.channel);
     }
     send(socket, {id: command.id, type: 'response', action: 'subscribe', channel: command.channel});
   },
@@ -357,14 +360,14 @@ var actions = {
       removeListener(socket, command.channel);
       var hasListener = anyHasListener(command.channel);
       if (!hasListener) {
-        nDataBroker.emit('unsubscribe', command.channel);
+        scBroker.emit('unsubscribe', command.channel);
       }
     } else {
       var channels = removeAllListeners(socket);
       for (var i in channels) {
         if (channels.hasOwnProperty(i)) {
           if (!anyHasListener(channels[i])) {
-            nDataBroker.emit('unsubscribe', channels[i]);
+            scBroker.emit('unsubscribe', channels[i]);
           }
         }
       }
@@ -378,17 +381,17 @@ var actions = {
   },
 
   publish: function (command, socket) {
-    nDataBroker.publish(command.channel, command.value);
+    scBroker.publish(command.channel, command.value);
     var response = {id: command.id, type: 'response', action: 'publish', channel: command.channel};
     if (command.getValue) {
       response.value = command.value;
     }
-    nDataBroker.emit('publish', command.channel, command.value);
+    scBroker.emit('publish', command.channel, command.value);
     send(socket, response);
   },
 
   send: function (command, socket) {
-    nDataBroker.emit('message', command.value, function (err, data) {
+    scBroker.emit('message', command.value, function (err, data) {
       var response = {
         id: command.id,
         type: 'response',
@@ -412,7 +415,7 @@ var genID = function () {
   return curID;
 };
 
-var server = com.createServer();
+var comServer = com.createServer();
 var connections = {};
 
 var handleConnection = errorDomain.bind(function (sock) {
@@ -422,7 +425,7 @@ var handleConnection = errorDomain.bind(function (sock) {
   connections[sock.id] = sock;
 
   sock.on('message', function (command) {
-    if (!SECRET_KEY || initialized.hasOwnProperty(sock.id) || command.action == 'init') {
+    if (initialized.hasOwnProperty(sock.id) || command.action == 'init') {
       try {
         if (actions[command.action]) {
           actions[command.action](command, sock);
@@ -458,7 +461,7 @@ var handleConnection = errorDomain.bind(function (sock) {
     for (var i in channels) {
       if (channels.hasOwnProperty(i)) {
         if (!anyHasListener(channels[i])) {
-          nDataBroker.emit('unsubscribe', channels[i]);
+          scBroker.emit('unsubscribe', channels[i]);
         }
       }
     }
@@ -466,21 +469,41 @@ var handleConnection = errorDomain.bind(function (sock) {
   });
 });
 
-errorDomain.add(server);
-server.on('connection', handleConnection);
+errorDomain.add(comServer);
+comServer.on('connection', handleConnection);
 
-server.on('listening', function () {
+comServer.on('listening', function () {
   process.send({event: 'listening'});
 });
 
+var comServerListen = function () {
+  if (SOCKET_PATH) {
+    if (process.platform != 'win32' && fs.existsSync(SOCKET_PATH)) {
+      fs.unlinkSync(SOCKET_PATH)
+    }
+    comServer.listen(SOCKET_PATH);
+  } else {
+    comServer.listen(PORT);
+  }
+};
+
 process.on('message', function (m) {
-  if (m && m.type == 'masterMessage') {
-    nDataBroker.emit('masterMessage', m.data);
+  if (m) {
+    if (m.type == 'masterMessage') {
+      scBroker.emit('masterMessage', m.data);
+    } else if (m.type == 'initBrokerServer') {
+      if (scBroker) {
+        throw new Error('Attempted to initialize broker which has already been initialized.');
+      } else {
+        initBrokerServer(m.data);
+        comServerListen();
+      }
+    }
   }
 });
 
 process.on('SIGTERM', function () {
-  server.close(function () {
+  comServer.close(function () {
     process.exit();
   });
 
@@ -494,15 +517,6 @@ process.on('SIGTERM', function () {
     process.exit();
   }, PROCESS_TERM_TIMEOUT);
 });
-
-if (SOCKET_PATH) {
-  if (process.platform != 'win32' && fs.existsSync(SOCKET_PATH)) {
-    fs.unlinkSync(SOCKET_PATH)
-  }
-  server.listen(SOCKET_PATH);
-} else {
-  server.listen(PORT);
-}
 
 setInterval(function () {
   var keys = dataExpirer.extractExpiredKeys();
