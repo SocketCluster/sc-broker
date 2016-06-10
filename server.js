@@ -188,7 +188,7 @@ var actions = {
     if (command.secretKey == scBroker.secretKey) {
       initialized[socket.id] = {};
     } else {
-      result.error = 'nData Error - Invalid password was supplied to nData';
+      result.error = 'Invalid password was supplied to the broker';
     }
     send(socket, result);
   },
@@ -273,7 +273,7 @@ var actions = {
       if (e.stack) {
         e = e.stack;
       }
-      ret.error = 'nData Error - Exception at run(): ' + e;
+      ret.error = 'Exception at run(): ' + e;
     }
     if (!command.noAck) {
       send(socket, ret);
@@ -439,10 +439,10 @@ var handleConnection = errorDomain.bind(function (sock) {
         if (e instanceof Error) {
           e = e.toString();
         }
-        send(sock, {id: command.id, type: 'response', action:  command.action, error: 'nData Error - Failed to process command due to the following error: ' + e});
+        send(sock, {id: command.id, type: 'response', action:  command.action, error: 'Failed to process command due to the following error: ' + e});
       }
     } else {
-      var e = 'nData Error - Cannot process command before init handshake';
+      var e = 'Cannot process command before init handshake';
       console.log(e);
       send(sock, {id: command.id, type: 'response', action: command.action, error: e});
     }
