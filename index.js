@@ -179,10 +179,14 @@ var Client = function (options) {
       action: 'init',
       secretKey: secretKey
     };
-    self._exec(command, function (data) {
-      self._resubscribeAll();
-      self._execPending();
-      self.emit('ready');
+    self._exec(command, function (err) {
+      if (err) {
+        self._errorDomain.emit('error', new Error(err));
+      } else {
+        self._resubscribeAll();
+        self._execPending();
+        self.emit('ready');
+      }
     });
   };
 
