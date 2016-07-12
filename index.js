@@ -15,6 +15,7 @@ var Server = function (options) {
     id: options.id,
     debug: options.debug,
     socketPath: options.socketPath,
+    port: options.port,
     expiryAccuracy: options.expiryAccuracy,
     downgradeToUser: options.downgradeToUser,
     brokerControllerPath: options.brokerControllerPath,
@@ -41,6 +42,10 @@ var Server = function (options) {
     execOptions.execArgv.push('--debug=' + options.debug);
   }
 
+  if (!options.brokerOptions) {
+    options.brokerOptions = {};
+  }
+  options.brokerOptions.secretKey = options.secretKey;
   options.brokerOptions.instanceId = options.instanceId;
 
   self._server = fork(__dirname + '/server.js', [stringArgs], execOptions);
@@ -99,7 +104,7 @@ module.exports.createServer = function (options) {
 var Client = function (options) {
   var self = this;
 
-  var secretKey = options.secretKey;
+  var secretKey = options.secretKey || null;
   var timeout = options.timeout;
 
   self.socketPath = options.socketPath;
@@ -115,7 +120,6 @@ var Client = function (options) {
     self.emit('error', err);
   });
 
-  secretKey = secretKey || null;
   if (timeout) {
     self._timeout = timeout;
   } else {
@@ -171,22 +175,15 @@ var Client = function (options) {
   self._connectHandler = function () {
     self._connecting = false;
     self._connected = true;
-
-    if (secretKey) {
-      var command = {
-        action: 'init',
-        secretKey: secretKey
-      };
-      self._exec(command, function (data) {
-        self._resubscribeAll();
-        self._execPending();
-        self.emit('ready');
-      });
-    } else {
+    var command = {
+      action: 'init',
+      secretKey: secretKey
+    };
+    self._exec(command, function (data) {
       self._resubscribeAll();
       self._execPending();
       self.emit('ready');
-    }
+    });
   };
 
   self._connect = function () {
