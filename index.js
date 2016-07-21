@@ -2,7 +2,7 @@ var fork = require('child_process').fork;
 var EventEmitter = require('events').EventEmitter;
 var ComSocket = require('ncom').ComSocket;
 var FlexiMap = require('fleximap').FlexiMap;
-var domain = require('domain');
+var domain = require('sc-domain');
 
 var DEFAULT_PORT = 9435;
 var HOST = '127.0.0.1';
@@ -111,7 +111,7 @@ var Client = function (options) {
   self.port = options.port;
   self.host = options.host;
 
-  self._errorDomain = domain.createDomain();
+  self._errorDomain = domain.create();
 
   self._errorDomain.on('error', function (err) {
     self._connecting = false;

@@ -18,7 +18,7 @@ var BROKER_CONTROLLER = null;
 var EventEmitter = require('events').EventEmitter;
 
 var fs = require('fs');
-var domain = require('domain');
+var domain = require('sc-domain');
 var com = require('ncom');
 var ExpiryManager = require('expirymanager').ExpiryManager;
 var FlexiMap = require('fleximap').FlexiMap;
@@ -40,6 +40,7 @@ var errorHandler = function (err) {
   process.send({event: 'error', data: error});
 };
 
+// errorDomain handles non-fatal errors.
 var errorDomain = domain.create();
 errorDomain.on('error', errorHandler);
 
@@ -161,7 +162,6 @@ var scBroker;
 
 var initBrokerServer = function (options) {
   scBroker = new Broker(options);
-  errorDomain.add(scBroker);
   global.broker = scBroker;
 
   // Create the controller instances now.
@@ -169,16 +169,12 @@ var initBrokerServer = function (options) {
 
   if (INIT_CONTROLLER_PATH != null) {
     INIT_CONTROLLER = require(INIT_CONTROLLER_PATH);
-    errorDomain.run(function () {
-      INIT_CONTROLLER.run(scBroker);
-    });
+    INIT_CONTROLLER.run(scBroker);
   }
 
   if (BROKER_CONTROLLER_PATH != null) {
     BROKER_CONTROLLER = require(BROKER_CONTROLLER_PATH);
-    errorDomain.run(function () {
-      BROKER_CONTROLLER.run(scBroker);
-    });
+    BROKER_CONTROLLER.run(scBroker);
   }
 };
 
@@ -469,7 +465,6 @@ var handleConnection = errorDomain.bind(function (sock) {
   });
 });
 
-errorDomain.add(comServer);
 comServer.on('connection', handleConnection);
 
 comServer.on('listening', function () {
@@ -525,3 +520,8 @@ setInterval(function () {
     dataMap.remove(keys[i]);
   }
 }, EXPIRY_ACCURACY);
+
+process.on('uncaughtException', function (err) {
+  errorHandler(err);
+  process.exit(1);
+});
