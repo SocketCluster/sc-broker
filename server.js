@@ -497,7 +497,7 @@ process.on('message', function (m) {
   }
 });
 
-process.on('SIGTERM', function () {
+var killServer = function () {
   comServer.close(function () {
     process.exit();
   });
@@ -511,7 +511,10 @@ process.on('SIGTERM', function () {
   setTimeout(function () {
     process.exit();
   }, PROCESS_TERM_TIMEOUT);
-});
+};
+
+process.on('SIGTERM', killServer);
+process.on('disconnect', killServer);
 
 setInterval(function () {
   var keys = dataExpirer.extractExpiredKeys();
