@@ -34,12 +34,15 @@ var Server = function (options) {
   // because they have their own --debug-brokers option.
   var execOptions = {
     execArgv: process.execArgv.filter(function (arg) {
-      return arg != '--debug' && arg != '--debug-brk'
+      return arg != '--debug' && arg != '--debug-brk' && arg != '--inspect'
     })
   };
 
   if (options.debug) {
     execOptions.execArgv.push('--debug=' + options.debug);
+  }
+  if (options.inspect) {
+    execOptions.execArgv.push('--inspect=' + options.inspect);
   }
 
   if (!options.brokerOptions) {
