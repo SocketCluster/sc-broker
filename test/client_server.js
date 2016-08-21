@@ -1,4 +1,4 @@
-var _      = require("underscore")
+var _      = require('underscore')
   , scBroker  = require('../index')
   , assert = require('assert')
   , conf   = {port: 9002}
@@ -7,15 +7,15 @@ var _      = require("underscore")
 
 describe('sc-broker client', function () {
 
-  before("run the server before start", function (done) {
+  before('run the server before start', function (done) {
     server = scBroker.createServer(conf);
-    server.on("ready", function () {
+    server.on('ready', function () {
       client = scBroker.createClient(conf);
       done();
     });
   });
 
-  after("shut down server afterwards", function (done) {
+  after('shut down server afterwards', function (done) {
     server.destroy();
     done();
   });
@@ -389,8 +389,8 @@ describe('sc-broker client', function () {
     });
   });
 
-  var ch1 = "foo"
-    , ch2 = "bar";
+  var ch1 = 'foo'
+    , ch2 = 'bar';
   describe('client#subscriptions', function () {
     it('should have no subsscriptions (empty array)', function (done) {
       assert(JSON.stringify(client.subscriptions()) == JSON.stringify([]));
@@ -398,7 +398,7 @@ describe('sc-broker client', function () {
     });
 
     it('should return no error', function (done) {
-      client.subscribe(ch1, function(err){
+      client.subscribe(ch1, function (err) {
         console.log(err)
         assert.equal(_.isUndefined(err), true);
         done();
@@ -427,7 +427,7 @@ describe('sc-broker client', function () {
 
   describe('client#publish', function () {
     it('should return no error (returns null)', function (done) {
-      client.publish(ch2, ["a","b"], function (err) {
+      client.publish(ch2, ['a','b'], function (err) {
         console.log(err)
         assert.equal(_.isNull(err), true);
         done();
@@ -507,13 +507,13 @@ describe('sc-broker client', function () {
 
   describe('client#remove', function () {
     it('should remove the value at keyChain', function (done) {
-      client.set(["a","b","c"], [1,2,3], function (err){
-        client.get(["a","b","c"], function (err, value){
+      client.set(['a','b','c'], [1,2,3], function (err){
+        client.get(['a','b','c'], function (err, value){
           assert.equal(value[2], 3);
-          client.remove(["a","b","c"], true, function (err, value){
+          client.remove(['a','b','c'], true, function (err, value){
             assert.equal(_.isArray(value), true);
             assert.equal(value.length, 3);
-            client.get(["a","b","c"], function (err, value){
+            client.get(['a','b','c'], function (err, value){
               assert.equal(_.isUndefined(value), true);
               done();
             });
@@ -525,14 +525,14 @@ describe('sc-broker client', function () {
 
   describe('client#pop', function () {
     it('should remove the last numerically-indexed entry at keyChain', function (done) {
-      client.set(["a","b","c"], [1,2,3], function (err){
-        client.get(["a","b","c"], function (err, value){
+      client.set(['a','b','c'], [1,2,3], function (err){
+        client.get(['a','b','c'], function (err, value){
           assert.equal(value[2], 3);
-          client.pop(["a","b","c"], true, function (err, value){
+          client.pop(['a','b','c'], true, function (err, value){
             assert.equal(_.isArray(value), true);
             assert.equal(value.length, 1);
             assert.equal(value[0], 3);
-            client.get(["a","b","c"], function (err, value){
+            client.get(['a','b','c'], function (err, value){
               assert.equal(_.isArray(value), true);
               assert.equal(value.length, 2);
               assert.equal(value[0], 1);
@@ -545,24 +545,22 @@ describe('sc-broker client', function () {
     });
   });
 
-
-  describe('client#registerDeathQuery', function () {
-//    it('should return no error', function (done) {
-//      client.registerDeathQuery("something","something" , function(err){
-//        assert.equal(_.isUndefined(err), true);
-//        done();
-//      });
-//    });
-  });
+  // describe('client#registerDeathQuery', function () {
+  //  it('should return no error', function (done) {
+  //    client.registerDeathQuery('something','something', function (err) {
+  //      assert.equal(_.isUndefined(err), true);
+  //      done();
+  //    });
+  //  });
+  // });
 
   describe('client#end', function () {
     it('should return no error', function (done) {
-      scBroker.createClient(conf).end(function(err){
+      var client = scBroker.createClient(conf);
+      client.end(function (err) {
         assert.equal(_.isUndefined(err), true);
         done();
       });
-
     });
   });
-
 });
