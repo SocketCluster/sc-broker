@@ -117,8 +117,8 @@ var Client = function (options) {
   self._errorDomain = domain.create();
 
   self._errorDomain.on('error', function (err) {
-    self._connecting = false;
-    self._connected = false;
+    self.connecting = false;
+    self.connected = false;
     self._pendingActions = [];
     self.emit('error', err);
   });
@@ -134,8 +134,8 @@ var Client = function (options) {
   self._pendingActions = [];
 
   self._socket = new ComSocket();
-  self._connecting = false;
-  self._connected = false;
+  self.connecting = false;
+  self.connected = false;
 
   self._curID = 1;
   self.MAX_ID = Math.pow(2, 53) - 2;
@@ -176,8 +176,8 @@ var Client = function (options) {
   };
 
   self._connectHandler = function () {
-    self._connecting = false;
-    self._connected = true;
+    self.connecting = false;
+    self.connected = true;
     var command = {
       action: 'init',
       secretKey: secretKey
@@ -194,7 +194,7 @@ var Client = function (options) {
   };
 
   self._connect = function () {
-    self._connecting = true;
+    self.connecting = true;
     if (self.socketPath) {
       self._socket.connect(self.socketPath, self._connectHandler);
     } else {
@@ -205,8 +205,8 @@ var Client = function (options) {
   self._errorDomain.add(self._socket);
 
   self._socket.on('end', function () {
-    self._connecting = false;
-    self._connected = false;
+    self.connecting = false;
+    self.connected = false;
     self._pendingActions = [];
   });
 
@@ -237,7 +237,7 @@ var Client = function (options) {
   self._connect();
 
   self._exec = function (command, callback) {
-    if (self._connected) {
+    if (self.connected) {
       command.id = self._genID();
       if (callback) {
         callback = self._errorDomain.bind(callback);
@@ -254,7 +254,7 @@ var Client = function (options) {
         }, self._timeout);
       }
       self._socket.write(command);
-    } else if (self._connecting) {
+    } else if (self.connecting) {
       self._pendingActions.push(arguments);
     } else {
       self._pendingActions.push(arguments);
@@ -263,7 +263,7 @@ var Client = function (options) {
   };
 
   self.isConnected = function() {
-    return self._connected;
+    return self.connected;
   };
 
   self.extractKeys = function (object) {
@@ -312,7 +312,7 @@ var Client = function (options) {
   self.unsubscribe = function (channel, ackCallback) {
     // No need to unsubscribe if the server is disconnected
     // The server cleans up automatically in case of disconnection
-    if (self.isSubscribed(channel) && self._connected) {
+    if (self.isSubscribed(channel) && self.connected) {
       delete self._subscriptionMap[channel];
 
       var command = {
@@ -835,15 +835,25 @@ var Client = function (options) {
           callback('Disconnection timed out');
         }, self._timeout);
 
-        self._socket.on('end', disconnectCallback);
+        if (self._socket.connected) {
+          self._socket.on('end', disconnectCallback);
+        } else {
+          disconnectCallback();
+        }
       }
       var setDisconnectStatus = function () {
         self._socket.removeListener('end', setDisconnectStatus);
-        self._connected = false;
-        self._connecting = false;
+        self.connected = false;
+        self.connecting = false;
       };
-      self._socket.on('end', setDisconnectStatus);
-      self._socket.end();
+      if (self._socket.connected) {
+        self._socket.on('end', setDisconnectStatus);
+        self._socket.end();
+      } else {
+        self._socket.destroy();
+        self.connected = false;
+        self.connecting = false;
+      }
     });
   };
 };
