@@ -1,7 +1,7 @@
 {
   "name": "sc-broker",
   "description": "sc-broker key-value and message broker",
-  "version": "2.2.3",
+  "version": "2.3.0",
   "author": {
     "name": "JF Gros-Dubois",
     "email": "flashthink@gmail.com"
@@ -18,7 +18,7 @@
   "dependencies": {
     "expirymanager": "0.9.x",
     "fleximap": "0.9.x",
-    "ncom": "0.10.x",
+    "ncom": "0.11.x",
     "sc-domain": "1.x.x"
   },
   "devDependencies": {

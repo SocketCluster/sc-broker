@@ -134,6 +134,10 @@ var Client = function (options) {
   self._pendingActions = [];
 
   self._socket = new ComSocket();
+  if (options.pubSubBatchDuration != null) {
+    self._socket.batchDuration = options.pubSubBatchDuration;
+  }
+
   self.connecting = false;
   self.connected = false;
 
@@ -236,7 +240,7 @@ var Client = function (options) {
 
   self._connect();
 
-  self._exec = function (command, callback) {
+  self._exec = function (command, callback, options) {
     if (self.connected) {
       command.id = self._genID();
       if (callback) {
@@ -253,7 +257,8 @@ var Client = function (options) {
           callback(error);
         }, self._timeout);
       }
-      self._socket.write(command);
+
+      self._socket.write(command, options);
     } else if (self.connecting) {
       self._pendingActions.push(arguments);
     } else {
@@ -278,6 +283,14 @@ var Client = function (options) {
       }
     }
     return array;
+  };
+
+  self._getPubSubExecOptions = function () {
+    var execOptions = {};
+    if (options.pubSubBatchDuration != null) {
+      execOptions.batch = true;
+    }
+    return execOptions;
   };
 
   self.subscribe = function (channel, ackCallback, force) {
@@ -305,7 +318,8 @@ var Client = function (options) {
           self.emit('subscribe', channel);
         }
       };
-      self._exec(command, callback);
+      var execOptions = self._getPubSubExecOptions();
+      self._exec(command, callback, execOptions);
     }
   };
 
@@ -331,7 +345,8 @@ var Client = function (options) {
         }
       };
 
-      self._exec(command, cb);
+      var execOptions = self._getPubSubExecOptions();
+      self._exec(command, cb, execOptions);
     } else {
       delete self._subscriptionMap[channel];
       if (ackCallback) {
@@ -357,7 +372,8 @@ var Client = function (options) {
       value: value
     };
 
-    self._exec(command, callback);
+    var execOptions = self._getPubSubExecOptions();
+    self._exec(command, callback, execOptions);
   };
 
   self.send = function (data, callback) {
