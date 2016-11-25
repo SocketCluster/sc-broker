@@ -54,8 +54,8 @@ if (DOWNGRADE_TO_USER && process.setuid) {
   }
 }
 
-var send = function (socket, object) {
-  socket.write(object);
+var send = function (socket, object, options) {
+  socket.write(object, options);
 };
 
 var dataMap = new FlexiMap();
@@ -149,7 +149,7 @@ Broker.prototype.publish = function (channel, message) {
     if (subscriptions.hasOwnProperty(i)) {
       sock = subscriptions[i][channel];
       if (sock && sock instanceof com.ComSocket) {
-        send(sock, {type: 'message', channel: channel, value: message});
+        send(sock, {type: 'message', channel: channel, value: message}, pubSubOptions);
       }
     }
   }
@@ -173,6 +173,10 @@ var initBrokerServer = function (options) {
     BROKER_CONTROLLER = require(BROKER_CONTROLLER_PATH);
     BROKER_CONTROLLER.run(scBroker);
   }
+};
+
+var pubSubOptions = {
+  batch: true
 };
 
 var actions = {
@@ -345,7 +349,7 @@ var actions = {
     if (!hasListener) {
       scBroker.emit('subscribe', command.channel);
     }
-    send(socket, {id: command.id, type: 'response', action: 'subscribe', channel: command.channel});
+    send(socket, {id: command.id, type: 'response', action: 'subscribe', channel: command.channel}, pubSubOptions);
   },
 
   unsubscribe: function (command, socket) {
@@ -365,12 +369,12 @@ var actions = {
         }
       }
     }
-    send(socket, {id: command.id, type: 'response', action: 'unsubscribe', channel: command.channel});
+    send(socket, {id: command.id, type: 'response', action: 'unsubscribe', channel: command.channel}, pubSubOptions);
   },
 
   isSubscribed: function (command, socket) {
     var result = hasListener(socket, command.channel);
-    send(socket, {id: command.id, type: 'response', action: 'isSubscribed', channel: command.channel, value: result});
+    send(socket, {id: command.id, type: 'response', action: 'isSubscribed', channel: command.channel, value: result}, pubSubOptions);
   },
 
   publish: function (command, socket) {
@@ -380,7 +384,7 @@ var actions = {
       response.value = command.value;
     }
     scBroker.emit('publish', command.channel, command.value);
-    send(socket, response);
+    send(socket, response, pubSubOptions);
   },
 
   send: function (command, socket) {
