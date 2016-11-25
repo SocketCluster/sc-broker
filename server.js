@@ -54,9 +54,6 @@ if (DOWNGRADE_TO_USER && process.setuid) {
   }
 }
 
-var escapeStr = '\\u001b';
-var escapeArr = escapeStr.split('');
-
 var send = function (socket, object) {
   socket.write(object);
 };
