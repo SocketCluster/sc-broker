@@ -20,6 +20,37 @@ describe('sc-broker client', function () {
     done();
   });
 
+  describe('sc-broker#executeCommandWhenClientIsDisconnected', function () {
+    it('should be able to execute getAll action if client starts out disconnected', function (done) {
+      client.end(function () {
+        client.getAll(function (err, val){
+          console.log(err);
+          assert.equal(_.isNull(err), true);
+          done();
+        });
+      });
+    });
+
+    it('should emit the data by value (not by reference) when recovering from lost connection', function (done) {
+      client.end(function () {
+        var obj = {
+          foo: 'bar'
+        };
+
+        var objString = JSON.stringify(obj);
+        client.set('someUniqueKey', obj, true, function (err, value) {
+          client.get('someUniqueKey', function (err, value) {
+            var valueString = JSON.stringify(value);
+            assert.equal(valueString, objString);
+            done();
+          });
+        });
+
+        obj.propertyAddedLater = 123;
+      });
+    });
+  });
+
   describe('sc-broker#createServer', function () {
     it('should provide server.on', function (done) {
       assert(_.isFunction(server.on), true);
@@ -41,8 +72,8 @@ describe('sc-broker client', function () {
 
   describe('client#getAll', function () {
     it('should get all', function (done) {
-      client.getAll(function(err, val){
-        console.log(err)
+      client.getAll(function (err, val){
+        console.log(err);
         assert.equal(_.isNull(err), true);
         done();
       });
@@ -399,7 +430,7 @@ describe('sc-broker client', function () {
 
     it('should return no error', function (done) {
       client.subscribe(ch1, function (err) {
-        console.log(err)
+        console.log(err);
         assert.equal(_.isUndefined(err), true);
         done();
       });
@@ -418,7 +449,7 @@ describe('sc-broker client', function () {
   describe('client#unsubscriptions', function () {
     it('should return no error (returns undefined)', function (done) {
       client.unsubscribe(ch2, function (err) {
-        console.log(err)
+        console.log(err);
         assert.equal(_.isUndefined(err), true);
         done();
       });
@@ -428,7 +459,7 @@ describe('sc-broker client', function () {
   describe('client#publish', function () {
     it('should return no error (returns null)', function (done) {
       client.publish(ch2, ['a','b'], function (err) {
-        console.log(err)
+        console.log(err);
         assert.equal(_.isNull(err), true);
         done();
       });
@@ -454,11 +485,13 @@ describe('sc-broker client', function () {
   });
 
 
-  var val9   = 'This is a value'
-    , path9  = ['a', 'b', 'c']
-    , path10  = ['d', 'e', 'f']
+  var val9 = 'This is a value'
+    , path9 = ['a', 'b', 'c']
+    , path10 = ['d', 'e', 'f']
     , path11 = ['that', '8a788b9c-c50e-0b3f-bd47-ec0c63327bf1']
-    , path12  = ['g', 'h', 'i'];
+    , path12 = ['g', 'h', 'i'];
+  var somePath = ['jlkfjsl'];
+  var someObject123 = {hello: 'world'};
 
   describe('client#set', function () {
     it('should provide client.set', function (done) {
@@ -468,7 +501,14 @@ describe('sc-broker client', function () {
 
     it('should set and return values', function (done) {
       client.set(path9, val9, true, function (err, value) {
-        assert.equal(value , val9);
+        assert.equal(value, val9);
+        done();
+      });
+    });
+
+    it('should set and return object values', function (done) {
+      client.set(somePath, someObject123, true, function (err, value) {
+        assert.equal(JSON.stringify(value), JSON.stringify(someObject123));
         done();
       });
     });

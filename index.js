@@ -260,8 +260,12 @@ var Client = function (options) {
 
       self._socket.write(command, options);
     } else if (self.connecting) {
+      // Clone the command argument to prevent the user from modifying the data
+      // after invoking the relevant function.
+      arguments[0] = JSON.parse(JSON.stringify(arguments[0]));
       self._pendingActions.push(arguments);
     } else {
+      arguments[0] = JSON.parse(JSON.stringify(arguments[0]));
       self._pendingActions.push(arguments);
       self._connect();
     }
@@ -842,7 +846,7 @@ var Client = function (options) {
           if (disconnectTimeout) {
             clearTimeout(disconnectTimeout);
           }
-          callback();
+          setTimeout(callback, 0);
           self._socket.removeListener('end', disconnectCallback);
         };
 
