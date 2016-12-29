@@ -1,7 +1,7 @@
 {
   "name": "sc-broker",
   "description": "sc-broker key-value and message broker",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "author": {
     "name": "JF Gros-Dubois",
     "email": "flashthink@gmail.com"
