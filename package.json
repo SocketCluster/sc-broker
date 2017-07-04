@@ -16,10 +16,10 @@
     }
   ],
   "dependencies": {
-    "expirymanager": "0.9.x",
-    "fleximap": "0.9.x",
-    "ncom": "0.11.x",
-    "sc-domain": "1.x.x",
+    "expirymanager": "~0.9.3",
+    "fleximap": "~0.9.10",
+    "ncom": "~0.11.1",
+    "sc-domain": "~1.0.1",
     "sc-errors": "~1.3.0"
   },
   "devDependencies": {
