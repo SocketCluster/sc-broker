@@ -23,6 +23,9 @@ var com = require('ncom');
 var ExpiryManager = require('expirymanager').ExpiryManager;
 var FlexiMap = require('fleximap').FlexiMap;
 
+var scErrors = require('sc-errors');
+var BrokerError = scErrors.BrokerError;
+
 var initialized = {};
 
 var errorHandler = function (err) {
@@ -48,7 +51,7 @@ if (DOWNGRADE_TO_USER && process.setuid) {
   try {
     process.setuid(DOWNGRADE_TO_USER);
   } catch (err) {
-    errorDomain.emit('error', new Error('Could not downgrade to user "' + DOWNGRADE_TO_USER +
+    errorDomain.emit('error', new BrokerError('Could not downgrade to user "' + DOWNGRADE_TO_USER +
       '" - Either this user does not exist or the current process does not have the permission' +
       ' to switch to it.'));
   }
@@ -489,7 +492,7 @@ process.on('message', function (m) {
       scBroker.emit('masterMessage', m.data);
     } else if (m.type == 'initBrokerServer') {
       if (scBroker) {
-        throw new Error('Attempted to initialize broker which has already been initialized.');
+        throw new BrokerError('Attempted to initialize broker which has already been initialized.');
       } else {
         initBrokerServer(m.data);
         comServerListen();

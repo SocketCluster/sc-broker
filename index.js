@@ -4,6 +4,9 @@ var ComSocket = require('ncom').ComSocket;
 var FlexiMap = require('fleximap').FlexiMap;
 var domain = require('sc-domain');
 
+var scErrors = require('sc-errors');
+var BrokerError = scErrors.BrokerError;
+
 var DEFAULT_PORT = 9435;
 var HOST = '127.0.0.1';
 
@@ -63,8 +66,7 @@ var Server = function (options) {
     } else if (value.event == 'error') {
       var err;
       if (value.data && value.data.message) {
-        err = new Error();
-        err.message = value.data.message;
+        err = new BrokerError(value.data.message);
         err.stack = value.data.stack;
       } else {
         err = value.data;
@@ -167,7 +169,7 @@ var Client = function (options) {
         delete self._subscriptionMap[channel];
         if (!hasFailed) {
           hasFailed = true;
-          self.emit('error', new Error('Failed to resubscribe to scBroker server channels'));
+          self.emit('error', new BrokerError('Failed to resubscribe to scBroker server channels'));
         }
       }
     };
@@ -188,7 +190,7 @@ var Client = function (options) {
     };
     self._exec(command, function (err) {
       if (err) {
-        self._errorDomain.emit('error', new Error(err));
+        self._errorDomain.emit('error', new BrokerError(err));
       } else {
         self._resubscribeAll();
         self._execPending();
@@ -566,7 +568,7 @@ var Client = function (options) {
     for (var i in data) {
       if (data.hasOwnProperty(i)) {
         if (!validVarNameRegex.test(i)) {
-          throw new Error("The variable name '" + i + "' is invalid");
+          throw new BrokerError("The variable name '" + i + "' is invalid");
         }
         headerString += 'var ' + i + '=' + JSON.stringify(data[i]) + ';';
       }

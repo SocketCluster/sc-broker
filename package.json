@@ -19,7 +19,8 @@
     "expirymanager": "0.9.x",
     "fleximap": "0.9.x",
     "ncom": "0.11.x",
-    "sc-domain": "1.x.x"
+    "sc-domain": "1.x.x",
+    "sc-errors": "~1.3.0"
   },
   "devDependencies": {
     "underscore": "1.8.3",
