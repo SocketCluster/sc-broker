@@ -184,7 +184,11 @@ var pubSubOptions = {
 
 var actions = {
   init: function (command, socket) {
-    var result = {id: command.id, type: 'response', action: 'init'};
+    var brokerInfo = {
+      id: BROKER_ID,
+      pid: process.pid
+    };
+    var result = {id: command.id, type: 'response', action: 'init', value: brokerInfo};
     if (command.secretKey == scBroker.secretKey) {
       initialized[socket.id] = {};
     } else {
@@ -472,7 +476,14 @@ var handleConnection = errorDomain.bind(function (sock) {
 comServer.on('connection', handleConnection);
 
 comServer.on('listening', function () {
-  process.send({event: 'listening'});
+  var brokerInfo = {
+    id: BROKER_ID,
+    pid: process.pid
+  };
+  process.send({
+    event: 'listening',
+    data: brokerInfo
+  });
 });
 
 var comServerListen = function () {

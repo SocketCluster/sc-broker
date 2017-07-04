@@ -62,7 +62,7 @@ var Server = function (options) {
 
   self._server.on('message', function (value) {
     if (value.event == 'listening') {
-      self.emit('ready');
+      self.emit('ready', value.data);
     } else if (value.event == 'error') {
       var err;
       if (value.data && value.data.message) {
@@ -79,7 +79,12 @@ var Server = function (options) {
   });
 
   self._server.on('exit', function (code, signal) {
-    self.emit('exit', code, signal);
+    self.emit('exit', {
+      id: options.id,
+      pid: self._server.pid,
+      code: code,
+      signal: signal
+    });
   });
 
   self.destroy = function () {
@@ -188,13 +193,13 @@ var Client = function (options) {
       action: 'init',
       secretKey: secretKey
     };
-    self._exec(command, function (err) {
+    self._exec(command, function (err, brokerInfo) {
       if (err) {
         self._errorDomain.emit('error', new BrokerError(err));
       } else {
         self._resubscribeAll();
         self._execPending();
-        self.emit('ready');
+        self.emit('ready', brokerInfo);
       }
     });
   };
