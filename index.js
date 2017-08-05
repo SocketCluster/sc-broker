@@ -3,12 +3,15 @@ var EventEmitter = require('events').EventEmitter;
 var ComSocket = require('ncom').ComSocket;
 var FlexiMap = require('fleximap').FlexiMap;
 var domain = require('sc-domain');
+var uuid = require('uuid');
 
 var scErrors = require('sc-errors');
 var BrokerError = scErrors.BrokerError;
+var TimeoutError = scErrors.TimeoutError;
 
 var DEFAULT_PORT = 9435;
 var HOST = '127.0.0.1';
+var DEFAULT_IPC_ACK_TIMEOUT = 10000;
 
 var Server = function (options) {
   EventEmitter.call(this);
@@ -25,6 +28,10 @@ var Server = function (options) {
     initControllerPath: options.initControllerPath,
     processTermTimeout: options.processTermTimeout
   };
+
+  this.options = options;
+
+  self._pendingResponseHandlers = {};
 
   var stringArgs = JSON.stringify(serverOptions);
 
@@ -48,6 +55,12 @@ var Server = function (options) {
     execOptions.execArgv.push('--inspect=' + options.inspect);
   }
 
+  if (options.ipcAckTimeout == null) {
+    self.ipcAckTimeout = DEFAULT_IPC_ACK_TIMEOUT;
+  } else {
+    self.ipcAckTimeout = options.ipcAckTimeout;
+  }
+
   if (!options.brokerOptions) {
     options.brokerOptions = {};
   }
@@ -55,26 +68,53 @@ var Server = function (options) {
   options.brokerOptions.instanceId = options.instanceId;
 
   self._server = fork(__dirname + '/server.js', [stringArgs], execOptions);
+
+  var formatError = function (value) {
+    var err;
+    if (value.data && value.data.message) {
+      err = new BrokerError(value.data.message);
+      err.stack = value.data.stack;
+    } else {
+      err = value.data;
+    }
+    err.brokerPid = self._server.pid;
+    return err;
+  };
+
+  this._server.on('error', function (value) {
+    var err = formatError(value);
+    self.emit('error', err);
+  });
   this._server.send({
     type: 'initBrokerServer',
     data: options.brokerOptions
   });
 
   self._server.on('message', function (value) {
-    if (value.event == 'listening') {
+    if (value.type == 'listening') {
       self.emit('ready', value.data);
-    } else if (value.event == 'error') {
-      var err;
-      if (value.data && value.data.message) {
-        err = new BrokerError(value.data.message);
-        err.stack = value.data.stack;
-      } else {
-        err = value.data;
-      }
-      err.brokerPid = self._server.pid;
+    } else if (value.type == 'error') {
+      var err = formatError(value);
       self.emit('error', err);
-    } else if (value.event == 'brokerMessage') {
-      self.emit('brokerMessage', value.brokerId, value.data);
+    } else if (value.type == 'brokerMessage') {
+      self.emit('brokerMessage', value.brokerId, value.data, function (err, data) {
+        if (value.cid) {
+          self._server.send({
+            type: 'masterResponse',
+            error: scErrors.dehydrateError(err, true),
+            data: data,
+            rid: value.cid
+          });
+        }
+      });
+    } else if (value.type == 'brokerResponse') {
+      var responseHandler = self._pendingResponseHandlers[value.rid];
+      if (responseHandler) {
+        clearTimeout(responseHandler.timeout);
+        delete self._pendingResponseHandlers[value.rid];
+        var properError = scErrors.hydrateError(value.error, true);
+        responseHandler.callback(properError, value.data, value.brokerId);
+      }
     }
   });
 
@@ -90,15 +130,37 @@ var Server = function (options) {
   self.destroy = function () {
     self._server.kill('SIGTERM');
   };
+
+  self._createIPCResponseHandler = function (callback) {
+    var cid = uuid.v4();
+
+    var responseTimeout = setTimeout(function () {
+      var responseHandler = self._pendingResponseHandlers[cid];
+      delete self._pendingResponseHandlers[cid];
+      var timeoutError = new TimeoutError('IPC response timed out');
+      responseHandler.callback(timeoutError);
+    }, self.ipcAckTimeout);
+
+    this._pendingResponseHandlers[cid] = {
+      callback: callback,
+      timeout: responseTimeout
+    };
+
+    return cid;
+  };
 };
 
 Server.prototype = Object.create(EventEmitter.prototype);
 
-Server.prototype.sendMasterMessage = function (data) {
-  this._server.send({
+Server.prototype.sendToBroker = function (data, callback) {
+  var messagePacket = {
     type: 'masterMessage',
     data: data
-  });
+  };
+  if (callback) {
+    messagePacket.cid = this._createIPCResponseHandler(callback);
+  }
+  this._server.send(messagePacket);
 };
 
 module.exports.createServer = function (options) {

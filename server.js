@@ -4,7 +4,7 @@ var PORT;
 if (args.port) {
   PORT = parseInt(args.port);
 }
-var BROKER_ID = args.id;
+var BROKER_ID = args.id || 0;
 var SOCKET_PATH = args.socketPath;
 var EXPIRY_ACCURACY = args.expiryAccuracy || 1000;
 var BROKER_CONTROLLER_PATH = args.brokerControllerPath;
@@ -14,17 +14,20 @@ var PROCESS_TERM_TIMEOUT = args.processTermTimeout || 10000;
 var DEBUG_PORT = args.debug || null;
 var INIT_CONTROLLER = null;
 var BROKER_CONTROLLER = null;
+var DEFAULT_IPC_ACK_TIMEOUT = 10000;
 
 var EventEmitter = require('events').EventEmitter;
 
 var fs = require('fs');
 var domain = require('sc-domain');
+var uuid = require('uuid');
 var com = require('ncom');
 var ExpiryManager = require('expirymanager').ExpiryManager;
 var FlexiMap = require('fleximap').FlexiMap;
 
 var scErrors = require('sc-errors');
 var BrokerError = scErrors.BrokerError;
+var TimeoutError = scErrors.TimeoutError;
 
 var initialized = {};
 
@@ -40,7 +43,7 @@ var errorHandler = function (err) {
     error = err;
   }
 
-  process.send({event: 'error', data: error});
+  process.send({type: 'error', data: error});
 };
 
 // errorDomain handles non-fatal errors.
@@ -117,6 +120,36 @@ var run = function (query, baseKey) {
   return Function('"use strict"; return (' + query + ')(arguments[0], arguments[1], arguments[2]);')(rebasedDataMap, dataExpirer, subscriptions);
 };
 
+var pendingResponseHandlers = {};
+
+function createIPCResponseHandler(ipcAckTimeout, callback) {
+  var cid = uuid.v4();
+
+  var responseTimeout = setTimeout(function () {
+    var responseHandler = pendingResponseHandlers[cid];
+    delete pendingResponseHandlers[cid];
+    var timeoutError = new TimeoutError('IPC response timed out');
+    responseHandler.callback(timeoutError);
+  }, ipcAckTimeout);
+
+  pendingResponseHandlers[cid] = {
+    callback: callback,
+    timeout: responseTimeout
+  };
+
+  return cid;
+}
+
+function handleMasterResponse(message) {
+  var responseHandler = pendingResponseHandlers[message.rid];
+  if (responseHandler) {
+    clearTimeout(responseHandler.timeout);
+    delete pendingResponseHandlers[message.rid];
+    var properError = scErrors.hydrateError(message.error, true);
+    responseHandler.callback(properError, message.data);
+  }
+}
+
 var Broker = function (options) {
   EventEmitter.call(this);
 
@@ -125,6 +158,7 @@ var Broker = function (options) {
   this.options = options;
   this.instanceId = this.options.instanceId;
   this.secretKey = this.options.secretKey;
+  this.ipcAckTimeout = this.options.ipcAckTimeout || DEFAULT_IPC_ACK_TIMEOUT;
   this.debugPort = DEBUG_PORT;
 
   this.dataMap = dataMap;
@@ -134,12 +168,16 @@ var Broker = function (options) {
 
 Broker.prototype = Object.create(EventEmitter.prototype);
 
-Broker.prototype.sendToMaster = function (data) {
-  process.send({
-    event: 'brokerMessage',
+Broker.prototype.sendToMaster = function (data, callback) {
+  var messagePacket = {
+    type: 'brokerMessage',
     brokerId: this.id,
     data: data
-  });
+  };
+  if (callback) {
+    messagePacket.cid = createIPCResponseHandler(this.ipcAckTimeout, callback);
+  }
+  process.send(messagePacket);
 };
 
 Broker.prototype.run = function (query, baseKey) {
@@ -481,7 +519,7 @@ comServer.on('listening', function () {
     pid: process.pid
   };
   process.send({
-    event: 'listening',
+    type: 'listening',
     data: brokerInfo
   });
 });
@@ -500,7 +538,19 @@ var comServerListen = function () {
 process.on('message', function (m) {
   if (m) {
     if (m.type == 'masterMessage') {
-      scBroker.emit('masterMessage', m.data);
+      scBroker.emit('masterMessage', m.data, function (err, data) {
+        if (m.cid) {
+          process.send({
+            type: 'brokerResponse',
+            brokerId: scBroker.id,
+            error: scErrors.dehydrateError(err, true),
+            data: data,
+            rid: m.cid
+          });
+        }
+      });
+    } else if (m.type == 'masterResponse') {
+      handleMasterResponse(m);
     } else if (m.type == 'initBrokerServer') {
       if (scBroker) {
         throw new BrokerError('Attempted to initialize broker which has already been initialized.');

@@ -1,9 +1,18 @@
-var _      = require('underscore')
-  , scBroker  = require('../index')
-  , assert = require('assert')
-  , conf   = {port: 9002}
-  , server
-  , client;
+var _ = require('underscore');
+var scBroker = require('../index');
+var assert = require('assert');
+
+var conf = {
+  port: 9002,
+  ipcAckTimeout: 1000,
+  brokerControllerPath: __dirname + '/broker-controller-stub',
+  brokerOptions: {
+    ipcAckTimeout: 1000
+  }
+};
+
+var server;
+var client;
 
 describe('sc-broker client', function () {
 
@@ -67,6 +76,99 @@ describe('sc-broker client', function () {
     it('should provide scBroker.createClient', function (done) {
       assert.equal(_.isFunction(scBroker.createClient), true);
       done();
+    });
+  });
+
+  describe('sc-broker#sendToBroker', function () {
+    it('should be able to send a message to the broker and get a response', function (done) {
+      server.sendToBroker({subject: 'world'}, function (err, data) {
+        var expected = JSON.stringify({hello: 'world'});
+        var actual = JSON.stringify(data);
+        assert.equal(actual, expected);
+        done();
+      });
+    });
+
+    it('should be able to send a message to the broker and get back an error if something went wrong', function (done) {
+      server.sendToBroker({sendBackError: true}, function (err, data) {
+        assert.notEqual(err, null);
+        assert.equal(err.name, 'CustomBrokerError');
+        assert.equal(err.message, 'This is an error');
+        done();
+      });
+    });
+
+    it('should be able to send a message to the broker and timeout if callback is provided and broker does not respond', function (done) {
+      server.sendToBroker({doNothing: true}, function (err, data) {
+        assert.notEqual(err, null);
+        assert.equal(err.name, 'TimeoutError');
+        done();
+      });
+    });
+
+    it('should be able to send a message to the broker and not timeout if no callback is provided and broker does not respond', function (done) {
+      server.sendToBroker({doNothing: true});
+      setTimeout(function () {
+        done();
+      }, 1500);
+    });
+  });
+
+  describe('broker-controller#sendToMaster', function () {
+    var currentTestCallbacks = {};
+
+    before('prepare message responder on master', function (done) {
+      server.on('brokerMessage', function (brokerId, data, respond) {
+        if (data.brokerTestResult) {
+          currentTestCallbacks[data.brokerTestResult](data.err, data.data);
+        } else if (data.sendBackError) {
+          var err = new Error('This is an error');
+          err.name = 'CustomMasterError';
+          respond(err);
+        } else if (!data.doNothing) {
+          var responseData = {
+            hello: data.brokerSubject
+          };
+          respond(null, responseData);
+        }
+      });
+      done();
+    });
+
+    it('should be able to send a message to the master and get a response', function (done) {
+      currentTestCallbacks['test1'] = function (err, data) {
+        var expected = JSON.stringify({hello: 'there'});
+        var actual = JSON.stringify(data);
+        assert.equal(actual, expected);
+        done();
+      };
+      server.sendToBroker({brokerTest: 'test1'});
+    });
+
+    it('should be able to send a message to the master and get back an error if something went wrong', function (done) {
+      currentTestCallbacks['test2'] = function (err, data) {
+        assert.notEqual(err, null);
+        assert.equal(err.name, 'CustomMasterError');
+        assert.equal(err.message, 'This is an error');
+        done();
+      };
+      server.sendToBroker({brokerTest: 'test2'});
+    });
+
+    it('should be able to send a message to the master and timeout if callback is provided and master does not respond', function (done) {
+      currentTestCallbacks['test3'] = function (err, data) {
+        assert.notEqual(err, null);
+        assert.equal(err.name, 'TimeoutError');
+        done();
+      };
+      server.sendToBroker({brokerTest: 'test3'});
+    });
+
+    it('should be able to send a message to the master and not timeout if no callback is provided and master does not respond', function (done) {
+      currentTestCallbacks['test4'] = function (err, data) {
+        done();
+      };
+      server.sendToBroker({brokerTest: 'test4'});
     });
   });
 
