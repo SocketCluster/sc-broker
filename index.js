@@ -29,7 +29,7 @@ var Server = function (options) {
     processTermTimeout: options.processTermTimeout
   };
 
-  this.options = options;
+  self.options = options;
 
   self._pendingResponseHandlers = {};
 
@@ -81,11 +81,11 @@ var Server = function (options) {
     return err;
   };
 
-  this._server.on('error', function (value) {
+  self._server.on('error', function (value) {
     var err = formatError(value);
     self.emit('error', err);
   });
-  this._server.send({
+  self._server.send({
     type: 'initBrokerServer',
     data: options.brokerOptions
   });
@@ -141,27 +141,27 @@ var Server = function (options) {
       responseHandler.callback(timeoutError);
     }, self.ipcAckTimeout);
 
-    this._pendingResponseHandlers[cid] = {
+    self._pendingResponseHandlers[cid] = {
       callback: callback,
       timeout: responseTimeout
     };
 
     return cid;
   };
+
+  self.sendToBroker = function (data, callback) {
+    var messagePacket = {
+      type: 'masterMessage',
+      data: data
+    };
+    if (callback) {
+      messagePacket.cid = self._createIPCResponseHandler(callback);
+    }
+    self._server.send(messagePacket);
+  };
 };
 
 Server.prototype = Object.create(EventEmitter.prototype);
-
-Server.prototype.sendToBroker = function (data, callback) {
-  var messagePacket = {
-    type: 'masterMessage',
-    data: data
-  };
-  if (callback) {
-    messagePacket.cid = this._createIPCResponseHandler(callback);
-  }
-  this._server.send(messagePacket);
-};
 
 module.exports.createServer = function (options) {
   if (!options) {
@@ -183,14 +183,43 @@ var Client = function (options) {
   self.port = options.port;
   self.host = options.host;
 
-  self._errorDomain = domain.create();
+  if (options.autoReconnect == null) {
+    self.autoReconnect = true;
+  } else {
+    self.autoReconnect = options.autoReconnect;
+  }
 
+  if (self.autoReconnect) {
+    if (options.autoReconnectOptions == null) {
+      options.autoReconnectOptions = {};
+    }
+
+    var reconnectOptions = options.autoReconnectOptions;
+    if (reconnectOptions.initialDelay == null) {
+      reconnectOptions.initialDelay = 200;
+    }
+    if (reconnectOptions.randomness == null) {
+      reconnectOptions.randomness = 100;
+    }
+    if (reconnectOptions.multiplier == null) {
+      reconnectOptions.multiplier = 1.3;
+    }
+    if (reconnectOptions.maxDelay == null) {
+      reconnectOptions.maxDelay = 1000;
+    }
+    self.autoReconnectOptions = reconnectOptions;
+  }
+
+  self._errorDomain = domain.create();
   self._errorDomain.on('error', function (err) {
-    self.connecting = false;
-    self.connected = false;
-    self._pendingActions = [];
     self.emit('error', err);
   });
+
+  self.CONNECTED = 'connected';
+  self.CONNECTING = 'connecting';
+  self.DISCONNECTED = 'disconnected';
+
+  self.state = self.DISCONNECTED;
 
   if (timeout) {
     self._timeout = timeout;
@@ -200,32 +229,117 @@ var Client = function (options) {
 
   self._subscriptionMap = {};
   self._commandMap = {};
-  self._pendingActions = [];
+  self._pendingBuffer = [];
+  self._pendingSubscriptionBuffer = [];
 
   self._socket = new ComSocket();
+  self._socket.on('error', function (err) {
+    self._errorDomain.emit('error', err);
+  });
+
   if (options.pubSubBatchDuration != null) {
     self._socket.batchDuration = options.pubSubBatchDuration;
   }
-
-  self.connecting = false;
-  self.connected = false;
 
   self._curID = 1;
   self.MAX_ID = Math.pow(2, 53) - 2;
 
   self.setMaxListeners(0);
 
+  self.connectAttempts = 0;
+  self.pendingReconnect = false;
+  self.pendingReconnectTimeout = null;
+
+  self._tryReconnect = function (initialDelay) {
+    var exponent = self.connectAttempts++;
+    var reconnectOptions = self.autoReconnectOptions;
+    var timeout;
+
+    if (initialDelay == null || exponent > 0) {
+      var initialTimeout = Math.round(reconnectOptions.initialDelay + (reconnectOptions.randomness || 0) * Math.random());
+
+      timeout = Math.round(initialTimeout * Math.pow(reconnectOptions.multiplier, exponent));
+    } else {
+      timeout = initialDelay;
+    }
+
+    if (timeout > reconnectOptions.maxDelay) {
+      timeout = reconnectOptions.maxDelay;
+    }
+
+    clearTimeout(self._reconnectTimeoutRef);
+
+    self.pendingReconnect = true;
+    self.pendingReconnectTimeout = timeout;
+    self._reconnectTimeoutRef = setTimeout(function () {
+      self._connect();
+    }, timeout);
+  };
+
   self._genID = function () {
     self._curID = (self._curID + 1) % self.MAX_ID;
     return 'n' + self._curID;
   };
 
-  self._execPending = function () {
-    var len = self._pendingActions.length;
-    for (var i = 0; i < len; i++) {
-      self._exec.apply(self, self._pendingActions[i]);
+  self._flushPendingBuffers = function () {
+    var subBufLen = self._pendingSubscriptionBuffer.length;
+    for (var i = 0; i < subBufLen; i++) {
+      var subCommandData = self._pendingSubscriptionBuffer[i];
+      self._exec(subCommandData.command, subCommandData.options);
     }
-    self._pendingActions = [];
+    self._pendingSubscriptionBuffer = [];
+
+    var bufLen = self._pendingBuffer.length;
+    for (var j = 0; j < bufLen; j++) {
+      var commandData = self._pendingBuffer[j];
+      self._exec(commandData.command, commandData.options);
+    }
+    self._pendingBuffer = [];
+  };
+
+  self._flushPendingBuffersIfConnected = function () {
+    if (self.state == self.CONNECTED) {
+      self._flushPendingBuffers();
+    }
+  };
+
+  self._prepareAndTrackCommand = function (command, callback) {
+    command.id = self._genID();
+    if (callback) {
+      var request = {callback: callback, command: command};
+      self._commandMap[command.id] = request;
+
+      request.timeout = setTimeout(function () {
+        var error = 'scBroker Error - The ' + command.action + ' action timed out';
+        delete request.callback;
+        if (self._commandMap.hasOwnProperty(command.id)) {
+          delete self._commandMap[command.id];
+        }
+        callback(error);
+      }, self._timeout);
+    }
+  };
+
+  self._bufferSubscribeCommand = function (command, callback, options) {
+    self._prepareAndTrackCommand(command, callback);
+    // Clone the command argument to prevent the user from modifying the data
+    // whilst the command is still pending in the buffer.
+    var commandData = {
+      command: JSON.parse(JSON.stringify(command)),
+      options: options
+    };
+    self._pendingSubscriptionBuffer.push(commandData);
+  };
+
+  self._bufferCommand = function (command, callback, options) {
+    self._prepareAndTrackCommand(command, callback);
+    // Clone the command argument to prevent the user from modifying the data
+    // whilst the command is still pending in the buffer.
+    var commandData = {
+      command: JSON.parse(JSON.stringify(command)),
+      options: options
+    };
+    self._pendingBuffer.push(commandData);
   };
 
   // Recovers subscriptions after scBroker server crash
@@ -233,7 +347,6 @@ var Client = function (options) {
     var hasFailed = false;
     var handleResubscribe = function (channel, err) {
       if (err) {
-        delete self._subscriptionMap[channel];
         if (!hasFailed) {
           hasFailed = true;
           self.emit('error', new BrokerError('Failed to resubscribe to scBroker server channels'));
@@ -249,39 +362,54 @@ var Client = function (options) {
   };
 
   self._connectHandler = function () {
-    self.connecting = false;
-    self.connected = true;
     var command = {
       action: 'init',
       secretKey: secretKey
     };
-    self._exec(command, function (err, brokerInfo) {
+    var initHandler = function (err, brokerInfo) {
       if (err) {
         self._errorDomain.emit('error', new BrokerError(err));
       } else {
+        self.state = self.CONNECTED;
+        self.connectAttempts = 0;
         self._resubscribeAll();
-        self._execPending();
+        self._flushPendingBuffers();
         self.emit('ready', brokerInfo);
       }
-    });
+    };
+    self._prepareAndTrackCommand(command, initHandler);
+    self._exec(command);
   };
 
   self._connect = function () {
-    self.connecting = true;
-    if (self.socketPath) {
-      self._socket.connect(self.socketPath, self._connectHandler);
-    } else {
-      self._socket.connect(self.port, self.host, self._connectHandler);
+    if (self.state == self.DISCONNECTED) {
+      self.pendingReconnect = false;
+      self.pendingReconnectTimeout = null;
+      clearTimeout(self._reconnectTimeoutRef);
+      self.state = self.CONNECTING;
+
+      if (self.socketPath) {
+        self._socket.connect(self.socketPath);
+      } else {
+        self._socket.connect(self.port, self.host);
+      }
+      self._socket.removeListener('connect', self._connectHandler);
+      self._socket.on('connect', self._connectHandler);
     }
   };
 
-  self._errorDomain.add(self._socket);
+  var handleDisconnection = function () {
+    self.state = self.DISCONNECTED;
+    self.pendingReconnect = false;
+    self.pendingReconnectTimeout = null;
+    clearTimeout(self._reconnectTimeoutRef);
+    self._pendingBuffer = [];
+    self._pendingSubscriptionBuffer = [];
+    self._tryReconnect();
+  };
 
-  self._socket.on('end', function () {
-    self.connecting = false;
-    self.connected = false;
-    self._pendingActions = [];
-  });
+  self._socket.on('close', handleDisconnection);
+  self._socket.on('end', handleDisconnection);
 
   self._socket.on('message', function (response) {
     var id = response.id;
@@ -296,8 +424,6 @@ var Client = function (options) {
 
         if (response.value !== undefined) {
           callback(error, response.value);
-        } else if (action == 'subscribe' || action == 'unsubscribe') {
-          callback(error);
         } else {
           callback(error);
         }
@@ -309,39 +435,12 @@ var Client = function (options) {
 
   self._connect();
 
-  self._exec = function (command, callback, options) {
-    if (self.connected) {
-      command.id = self._genID();
-      if (callback) {
-        callback = self._errorDomain.bind(callback);
-        var request = {callback: callback, command: command};
-        self._commandMap[command.id] = request;
-
-        request.timeout = setTimeout(function () {
-          var error = 'scBroker Error - The ' + command.action + ' action timed out';
-          delete request.callback;
-          if (self._commandMap.hasOwnProperty(command.id)) {
-            delete self._commandMap[command.id];
-          }
-          callback(error);
-        }, self._timeout);
-      }
-
-      self._socket.write(command, options);
-    } else if (self.connecting) {
-      // Clone the command argument to prevent the user from modifying the data
-      // after invoking the relevant function.
-      arguments[0] = JSON.parse(JSON.stringify(arguments[0]));
-      self._pendingActions.push(arguments);
-    } else {
-      arguments[0] = JSON.parse(JSON.stringify(arguments[0]));
-      self._pendingActions.push(arguments);
-      self._connect();
-    }
+  self._exec = function (command, options) {
+    self._socket.write(command, options);
   };
 
   self.isConnected = function() {
-    return self.connected;
+    return self.state == self.CONNECTED;
   };
 
   self.extractKeys = function (object) {
@@ -368,38 +467,36 @@ var Client = function (options) {
 
   self.subscribe = function (channel, ackCallback, force) {
     if (!force && self.isSubscribed(channel)) {
-      if (ackCallback) {
-        self._errorDomain.run(function () {
-          ackCallback();
-        });
-      }
+      ackCallback && ackCallback();
     } else {
-      self._subscriptionMap[channel] = true;
+      self._subscriptionMap[channel] = 'pending';
 
       var command = {
         channel: channel,
         action: 'subscribe'
       };
-
       var callback = function (err) {
         if (err) {
-          delete self._subscriptionMap[channel];
           ackCallback && ackCallback(err);
           self.emit('subscribeFail', err, channel);
         } else {
+          self._subscriptionMap[channel] = 'subscribed';
           ackCallback && ackCallback();
           self.emit('subscribe', channel);
         }
       };
       var execOptions = self._getPubSubExecOptions();
-      self._exec(command, callback, execOptions);
+
+      self._connect();
+      self._bufferSubscribeCommand(command, callback, execOptions);
+      self._flushPendingBuffersIfConnected();
     }
   };
 
   self.unsubscribe = function (channel, ackCallback) {
     // No need to unsubscribe if the server is disconnected
     // The server cleans up automatically in case of disconnection
-    if (self.isSubscribed(channel) && self.connected) {
+    if (self.isSubscribed(channel) && self.state == self.CONNECTED) {
       delete self._subscriptionMap[channel];
 
       var command = {
@@ -408,34 +505,44 @@ var Client = function (options) {
       };
 
       var cb = function (err) {
-        if (err) {
-          self._subscriptionMap[channel] = true;
-          ackCallback && ackCallback(err);
-          self.emit('unsubscribeFail');
-        } else {
-          ackCallback && ackCallback();
-          self.emit('unsubscribe');
-        }
+        // Unsubscribe can never fail because TCP guarantees
+        // delivery for the life of the connection. If the
+        // connection fails then all subscriptions
+        // will be cleared automatically anyway.
+        ackCallback && ackCallback();
+        self.emit('unsubscribe');
       };
 
       var execOptions = self._getPubSubExecOptions();
-      self._exec(command, cb, execOptions);
+      self._bufferCommand(command, cb, execOptions);
+      self._flushPendingBuffers();
     } else {
       delete self._subscriptionMap[channel];
-      if (ackCallback) {
-        self._errorDomain.run(function () {
-          ackCallback();
-        });
-      }
+      ackCallback && ackCallback();
     }
   };
 
-  self.subscriptions = function () {
-    return Object.keys(self._subscriptionMap || {});
+  self.subscriptions = function (includePending) {
+    var allSubs = Object.keys(self._subscriptionMap || {});
+    if (includePending) {
+      return allSubs;
+    }
+    var activeSubs = [];
+    var len = allSubs.length;
+    for (var i = 0; i < len; i++) {
+      var sub = allSubs[i];
+      if (self._subscriptionMap[sub] == 'subscribed') {
+        activeSubs.push(sub);
+      }
+    }
+    return activeSubs;
   };
 
-  self.isSubscribed = function (channel) {
-    return !!self._subscriptionMap[channel];
+  self.isSubscribed = function (channel, includePending) {
+    if (includePending) {
+      return !!self._subscriptionMap[channel];
+    }
+    return self._subscriptionMap[channel] == 'subscribed';
   };
 
   self.publish = function (channel, value, callback) {
@@ -446,7 +553,9 @@ var Client = function (options) {
     };
 
     var execOptions = self._getPubSubExecOptions();
-    self._exec(command, callback, execOptions);
+    self._connect();
+    self._bufferCommand(command, callback, execOptions);
+    self._flushPendingBuffersIfConnected();
   };
 
   self.send = function (data, callback) {
@@ -455,7 +564,9 @@ var Client = function (options) {
       value: data
     };
 
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   /*
@@ -486,7 +597,9 @@ var Client = function (options) {
       command.getValue = 1;
     }
 
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   /*
@@ -498,7 +611,9 @@ var Client = function (options) {
       keys: keys,
       value: seconds
     };
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   /*
@@ -509,7 +624,8 @@ var Client = function (options) {
       action: 'unexpire',
       keys: keys
     };
-    self._exec(command, callback);
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   /*
@@ -520,7 +636,9 @@ var Client = function (options) {
       action: 'getExpiry',
       key: key
     };
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   /*
@@ -542,7 +660,9 @@ var Client = function (options) {
       value: value
     };
 
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   /*
@@ -572,7 +692,9 @@ var Client = function (options) {
       command.getValue = 1;
     }
 
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   self.get = function (key, callback) {
@@ -580,7 +702,10 @@ var Client = function (options) {
       action: 'get',
       key: key
     };
-    self._exec(command, callback);
+
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   /*
@@ -608,14 +733,18 @@ var Client = function (options) {
       command.toIndex = toIndex;
     }
 
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   self.getAll = function (callback) {
     var command = {
       action: 'getAll'
     };
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   self.count = function (key, callback) {
@@ -623,7 +752,9 @@ var Client = function (options) {
       action: 'count',
       key: key
     };
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   self._stringifyQuery = function (query, data) {
@@ -672,7 +803,9 @@ var Client = function (options) {
         action: 'registerDeathQuery',
         value: query
       };
-      self._exec(command, callback);
+      self._connect();
+      self._bufferCommand(command, callback);
+      self._flushPendingBuffersIfConnected();
     } else {
       callback && callback('Invalid query format - Query must be a string or a function');
     }
@@ -719,7 +852,9 @@ var Client = function (options) {
         command.noAck = noAck;
       }
 
-      self._exec(command, callback);
+      self._connect();
+      self._bufferCommand(command, callback);
+      self._flushPendingBuffersIfConnected();
     } else {
       callback && callback('Invalid query format - Query must be a string or a function');
     }
@@ -769,7 +904,9 @@ var Client = function (options) {
       command.noAck = 1;
     }
 
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   /*
@@ -814,14 +951,18 @@ var Client = function (options) {
       command.noAck = 1;
     }
 
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   self.removeAll = function (callback) {
     var command = {
       action: 'removeAll'
     };
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   /*
@@ -867,7 +1008,9 @@ var Client = function (options) {
       command.noAck = 1;
     }
 
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   /*
@@ -897,7 +1040,9 @@ var Client = function (options) {
       command.noAck = 1;
     }
 
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   self.hasKey = function (key, callback) {
@@ -905,10 +1050,13 @@ var Client = function (options) {
       action: 'hasKey',
       key: key
     };
-    self._exec(command, callback);
+    self._connect();
+    self._bufferCommand(command, callback);
+    self._flushPendingBuffersIfConnected();
   };
 
   self.end = function (callback) {
+    clearTimeout(self._reconnectTimeoutRef);
     self.unsubscribe(null, function () {
       if (callback) {
         var disconnectCallback = function () {
@@ -932,16 +1080,14 @@ var Client = function (options) {
       }
       var setDisconnectStatus = function () {
         self._socket.removeListener('end', setDisconnectStatus);
-        self.connected = false;
-        self.connecting = false;
+        self.state = self.DISCONNECTED;
       };
       if (self._socket.connected) {
         self._socket.on('end', setDisconnectStatus);
         self._socket.end();
       } else {
         self._socket.destroy();
-        self.connected = false;
-        self.connecting = false;
+        self.state = self.DISCONNECTED;
       }
     });
   };

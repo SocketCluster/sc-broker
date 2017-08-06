@@ -4,6 +4,7 @@ var assert = require('assert');
 
 var conf = {
   port: 9002,
+  timeout: 2000,
   ipcAckTimeout: 1000,
   brokerControllerPath: __dirname + '/broker-controller-stub',
   brokerOptions: {
@@ -18,8 +19,14 @@ describe('sc-broker client', function () {
 
   before('run the server before start', function (done) {
     server = scBroker.createServer(conf);
+    server.on('error', function (err) {
+      console.log('SERVER ERROR:', err);
+    });
+    client = scBroker.createClient(conf);
+    client.on('error', function (err) {
+      console.log('CLIENT ERROR:', err);
+    });
     server.on('ready', function () {
-      client = scBroker.createClient(conf);
       done();
     });
   });
@@ -32,7 +39,7 @@ describe('sc-broker client', function () {
   describe('sc-broker#executeCommandWhenClientIsDisconnected', function () {
     it('should be able to execute getAll action if client starts out disconnected', function (done) {
       client.end(function () {
-        client.getAll(function (err, val){
+        client.getAll(function (err, val) {
           console.log(err);
           assert.equal(_.isNull(err), true);
           done();
@@ -174,7 +181,7 @@ describe('sc-broker client', function () {
 
   describe('client#getAll', function () {
     it('should get all', function (done) {
-      client.getAll(function (err, val){
+      client.getAll(function (err, val) {
         console.log(err);
         assert.equal(_.isNull(err), true);
         done();
@@ -639,7 +646,7 @@ describe('sc-broker client', function () {
 
     it('should set value inside the callback of a .get()', function (done) {
       client.get(path12, function (err, value) {
-        client.set(path12, val9, function (err){
+        client.set(path12, val9, function (err) {
           assert.equal(err , null);
           done();
         });
@@ -649,13 +656,13 @@ describe('sc-broker client', function () {
 
   describe('client#remove', function () {
     it('should remove the value at keyChain', function (done) {
-      client.set(['a','b','c'], [1,2,3], function (err){
-        client.get(['a','b','c'], function (err, value){
+      client.set(['a','b','c'], [1,2,3], function (err) {
+        client.get(['a','b','c'], function (err, value) {
           assert.equal(value[2], 3);
-          client.remove(['a','b','c'], true, function (err, value){
+          client.remove(['a','b','c'], true, function (err, value) {
             assert.equal(_.isArray(value), true);
             assert.equal(value.length, 3);
-            client.get(['a','b','c'], function (err, value){
+            client.get(['a','b','c'], function (err, value) {
               assert.equal(_.isUndefined(value), true);
               done();
             });
@@ -667,14 +674,14 @@ describe('sc-broker client', function () {
 
   describe('client#pop', function () {
     it('should remove the last numerically-indexed entry at keyChain', function (done) {
-      client.set(['a','b','c'], [1,2,3], function (err){
-        client.get(['a','b','c'], function (err, value){
+      client.set(['a','b','c'], [1,2,3], function (err) {
+        client.get(['a','b','c'], function (err, value) {
           assert.equal(value[2], 3);
-          client.pop(['a','b','c'], true, function (err, value){
+          client.pop(['a','b','c'], true, function (err, value) {
             assert.equal(_.isArray(value), true);
             assert.equal(value.length, 1);
             assert.equal(value[0], 3);
-            client.get(['a','b','c'], function (err, value){
+            client.get(['a','b','c'], function (err, value) {
               assert.equal(_.isArray(value), true);
               assert.equal(value.length, 2);
               assert.equal(value[0], 1);

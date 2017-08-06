@@ -461,7 +461,9 @@ var comServer = com.createServer();
 var connections = {};
 
 var handleConnection = errorDomain.bind(function (sock) {
-  errorDomain.add(sock);
+  sock.on('error', function (err) {
+    errorDomain.emit('error', err);
+  });
   sock.id = genID();
 
   connections[sock.id] = sock;
@@ -472,21 +474,15 @@ var handleConnection = errorDomain.bind(function (sock) {
         if (actions[command.action]) {
           actions[command.action](command, sock);
         }
-      } catch(e) {
-        if (e.stack) {
-          console.log(e.stack);
-        } else {
-          console.log(e);
+      } catch (err) {
+        if (err instanceof Error) {
+          err = err.toString();
         }
-        if (e instanceof Error) {
-          e = e.toString();
-        }
-        send(sock, {id: command.id, type: 'response', action:  command.action, error: 'Failed to process command due to the following error: ' + e});
+        send(sock, {id: command.id, type: 'response', action:  command.action, error: 'Failed to process command due to the following error: ' + err});
       }
     } else {
-      var e = 'Cannot process command before init handshake';
-      console.log(e);
-      send(sock, {id: command.id, type: 'response', action: command.action, error: e});
+      var err = 'Cannot process command before init handshake';
+      send(sock, {id: command.id, type: 'response', action: command.action, error: err});
     }
   });
 
