@@ -69,20 +69,19 @@ var Server = function (options) {
 
   self._server = fork(__dirname + '/server.js', [stringArgs], execOptions);
 
-  var formatError = function (value) {
-    var err;
-    if (value.data && value.data.message) {
-      err = new BrokerError(value.data.message);
-      err.stack = value.data.stack;
-    } else {
-      err = value.data;
+  var formatError = function (error) {
+    var err = scErrors.hydrateError(error, true);
+    if (typeof err == 'object') {
+      if (err.name == null || err.name == 'Error') {
+        err.name = 'BrokerError';
+      }
+      err.brokerPid = self._server.pid;
     }
-    err.brokerPid = self._server.pid;
     return err;
   };
 
-  self._server.on('error', function (value) {
-    var err = formatError(value);
+  self._server.on('error', function (error) {
+    var err = formatError(error);
     self.emit('error', err);
   });
   self._server.send({
@@ -94,7 +93,7 @@ var Server = function (options) {
     if (value.type == 'listening') {
       self.emit('ready', value.data);
     } else if (value.type == 'error') {
-      var err = formatError(value);
+      var err = formatError(value.data);
       self.emit('error', err);
     } else if (value.type == 'brokerMessage') {
       self.emit('brokerMessage', value.brokerId, value.data, function (err, data) {
@@ -310,7 +309,7 @@ var Client = function (options) {
       self._commandMap[command.id] = request;
 
       request.timeout = setTimeout(function () {
-        var error = 'scBroker Error - The ' + command.action + ' action timed out';
+        var error = new TimeoutError('Broker Error - The ' + command.action + ' action timed out');
         delete request.callback;
         if (self._commandMap.hasOwnProperty(command.id)) {
           delete self._commandMap[command.id];
@@ -342,14 +341,14 @@ var Client = function (options) {
     self._pendingBuffer.push(commandData);
   };
 
-  // Recovers subscriptions after scBroker server crash
+  // Recovers subscriptions after Broker server crash
   self._resubscribeAll = function () {
     var hasFailed = false;
     var handleResubscribe = function (channel, err) {
       if (err) {
         if (!hasFailed) {
           hasFailed = true;
-          self.emit('error', new BrokerError('Failed to resubscribe to scBroker server channels'));
+          self.emit('error', new BrokerError('Failed to resubscribe to Broker server channels'));
         }
       }
     };
@@ -368,7 +367,7 @@ var Client = function (options) {
     };
     var initHandler = function (err, brokerInfo) {
       if (err) {
-        self._errorDomain.emit('error', new BrokerError(err));
+        self._errorDomain.emit('error', err);
       } else {
         self.state = self.CONNECTED;
         self.connectAttempts = 0;
@@ -413,7 +412,11 @@ var Client = function (options) {
 
   self._socket.on('message', function (response) {
     var id = response.id;
-    var error = response.error || null;
+    var rawError = response.error;
+    var error = null;
+    if (rawError != null) {
+      error = scErrors.hydrateError(rawError, true);
+    }
     if (response.type == 'response') {
       if (self._commandMap.hasOwnProperty(id)) {
         clearTimeout(self._commandMap[id].timeout);

@@ -32,17 +32,7 @@ var TimeoutError = scErrors.TimeoutError;
 var initialized = {};
 
 var errorHandler = function (err) {
-  var error;
-
-  if (err.stack) {
-    error = {
-      message: err.message,
-      stack: err.stack
-    };
-  } else {
-    error = err;
-  }
-
+  var error = scErrors.dehydrateError(err, true);
   process.send({type: 'error', data: error});
 };
 
@@ -56,7 +46,7 @@ if (DOWNGRADE_TO_USER && process.setuid) {
   } catch (err) {
     errorDomain.emit('error', new BrokerError('Could not downgrade to user "' + DOWNGRADE_TO_USER +
       '" - Either this user does not exist or the current process does not have the permission' +
-      ' to switch to it.'));
+      ' to switch to it'));
   }
 }
 
@@ -230,7 +220,8 @@ var actions = {
     if (command.secretKey == scBroker.secretKey) {
       initialized[socket.id] = {};
     } else {
-      result.error = 'Invalid password was supplied to the broker';
+      var err = new BrokerError('Invalid password was supplied to the broker');
+      result.error = scErrors.dehydrateError(err, true);
     }
     send(socket, result);
   },
@@ -311,11 +302,14 @@ var actions = {
       if (result !== undefined) {
         ret.value = result;
       }
-    } catch(e) {
-      if (e.stack) {
-        e = e.stack;
+    } catch (e) {
+      var queryErrorPrefix = 'Exception at run(): ';
+      if (typeof e == 'string') {
+        e = queryErrorPrefix + e;
+      } else if (typeof e.message == 'string') {
+        e.message = queryErrorPrefix + e.message;
       }
-      ret.error = 'Exception at run(): ' + e;
+      ret.error = scErrors.dehydrateError(e, true);
     }
     if (!command.noAck) {
       send(socket, ret);
@@ -441,7 +435,7 @@ var actions = {
         value: data
       };
       if (err) {
-        response.error = err;
+        response.error = scErrors.dehydrateError(err, true);
       }
       send(socket, response);
     });
@@ -475,13 +469,12 @@ var handleConnection = errorDomain.bind(function (sock) {
           actions[command.action](command, sock);
         }
       } catch (err) {
-        if (err instanceof Error) {
-          err = err.toString();
-        }
-        send(sock, {id: command.id, type: 'response', action:  command.action, error: 'Failed to process command due to the following error: ' + err});
+        err = scErrors.dehydrateError(err, true);
+        send(sock, {id: command.id, type: 'response', action:  command.action, error: err});
       }
     } else {
-      var err = 'Cannot process command before init handshake';
+      var err = new BrokerError('Cannot process command before init handshake');
+      err = scErrors.dehydrateError(err, true);
       send(sock, {id: command.id, type: 'response', action: command.action, error: err});
     }
   });
@@ -503,7 +496,6 @@ var handleConnection = errorDomain.bind(function (sock) {
         }
       }
     }
-    errorDomain.remove(sock);
   });
 });
 
@@ -549,7 +541,8 @@ process.on('message', function (m) {
       handleMasterResponse(m);
     } else if (m.type == 'initBrokerServer') {
       if (scBroker) {
-        throw new BrokerError('Attempted to initialize broker which has already been initialized.');
+        var err = new BrokerError('Attempted to initialize broker which has already been initialized');
+        errorDomain.emit('error', err);
       } else {
         initBrokerServer(m.data);
         comServerListen();
