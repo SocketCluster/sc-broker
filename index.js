@@ -11,6 +11,7 @@ var TimeoutError = scErrors.TimeoutError;
 
 var DEFAULT_PORT = 9435;
 var HOST = '127.0.0.1';
+var DEFAULT_CONNECT_RETRY_ERROR_THRESHOLD = 20;
 var DEFAULT_IPC_ACK_TIMEOUT = 10000;
 
 var Server = function (options) {
@@ -209,6 +210,12 @@ var Client = function (options) {
     self.autoReconnectOptions = reconnectOptions;
   }
 
+  if (options.connectRetryErrorThreshold == null) {
+    self.connectRetryErrorThreshold = DEFAULT_CONNECT_RETRY_ERROR_THRESHOLD;
+  } else {
+    self.connectRetryErrorThreshold = options.connectRetryErrorThreshold;
+  }
+
   self._errorDomain = domain.create();
   self._errorDomain.on('error', function (err) {
     self.emit('error', err);
@@ -231,9 +238,22 @@ var Client = function (options) {
   self._pendingBuffer = [];
   self._pendingSubscriptionBuffer = [];
 
+  self.connectAttempts = 0;
+  self.pendingReconnect = false;
+  self.pendingReconnectTimeout = null;
+
   self._socket = new ComSocket();
+
   self._socket.on('error', function (err) {
-    self._errorDomain.emit('error', err);
+    var isConnectionFailure = err.code == 'ENOENT' || err.code == 'ECONNREFUSED';
+    var isBelowRetryThreshold = self.connectAttempts < self.connectRetryErrorThreshold;
+
+    // We can tolerate a few missed reconnections without emitting a full error.
+    if (isConnectionFailure && isBelowRetryThreshold && err.address == options.socketPath) { // TODO 2
+      self.emit('warning', err);
+    } else {
+      self.emit('error', err);
+    }
   });
 
   if (options.pubSubBatchDuration != null) {
@@ -244,10 +264,6 @@ var Client = function (options) {
   self.MAX_ID = Math.pow(2, 53) - 2;
 
   self.setMaxListeners(0);
-
-  self.connectAttempts = 0;
-  self.pendingReconnect = false;
-  self.pendingReconnectTimeout = null;
 
   self._tryReconnect = function (initialDelay) {
     var exponent = self.connectAttempts++;
