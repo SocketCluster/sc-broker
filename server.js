@@ -19,7 +19,6 @@ var DEFAULT_IPC_ACK_TIMEOUT = 10000;
 var EventEmitter = require('events').EventEmitter;
 
 var fs = require('fs');
-var domain = require('sc-domain');
 var uuid = require('uuid');
 var com = require('ncom');
 var ExpiryManager = require('expirymanager').ExpiryManager;
@@ -31,20 +30,16 @@ var TimeoutError = scErrors.TimeoutError;
 
 var initialized = {};
 
-var errorHandler = function (err) {
+var sendErrorToMaster = function (err) {
   var error = scErrors.dehydrateError(err, true);
   process.send({type: 'error', data: error});
 };
-
-// errorDomain handles non-fatal errors.
-var errorDomain = domain.create();
-errorDomain.on('error', errorHandler);
 
 if (DOWNGRADE_TO_USER && process.setuid) {
   try {
     process.setuid(DOWNGRADE_TO_USER);
   } catch (err) {
-    errorDomain.emit('error', new BrokerError('Could not downgrade to user "' + DOWNGRADE_TO_USER +
+    sendErrorToMaster(new BrokerError('Could not downgrade to user "' + DOWNGRADE_TO_USER +
       '" - Either this user does not exist or the current process does not have the permission' +
       ' to switch to it'));
   }
@@ -454,10 +449,8 @@ var genID = function () {
 var comServer = com.createServer();
 var connections = {};
 
-var handleConnection = errorDomain.bind(function (sock) {
-  sock.on('error', function (err) {
-    errorDomain.emit('error', err);
-  });
+var handleConnection = function (sock) {
+  sock.on('error', sendErrorToMaster);
   sock.id = genID();
 
   connections[sock.id] = sock;
@@ -497,7 +490,7 @@ var handleConnection = errorDomain.bind(function (sock) {
       }
     }
   });
-});
+};
 
 comServer.on('connection', handleConnection);
 
@@ -542,7 +535,7 @@ process.on('message', function (m) {
     } else if (m.type == 'initBrokerServer') {
       if (scBroker) {
         var err = new BrokerError('Attempted to initialize broker which has already been initialized');
-        errorDomain.emit('error', err);
+        sendErrorToMaster(err);
       } else {
         initBrokerServer(m.data);
         comServerListen();
@@ -579,6 +572,6 @@ setInterval(function () {
 }, EXPIRY_ACCURACY);
 
 process.on('uncaughtException', function (err) {
-  errorHandler(err);
+  sendErrorToMaster(err);
   process.exit(1);
 });

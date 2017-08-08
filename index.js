@@ -2,7 +2,6 @@ var fork = require('child_process').fork;
 var EventEmitter = require('events').EventEmitter;
 var ComSocket = require('ncom').ComSocket;
 var FlexiMap = require('fleximap').FlexiMap;
-var domain = require('sc-domain');
 var uuid = require('uuid');
 
 var scErrors = require('sc-errors');
@@ -216,11 +215,6 @@ var Client = function (options) {
     self.connectRetryErrorThreshold = options.connectRetryErrorThreshold;
   }
 
-  self._errorDomain = domain.create();
-  self._errorDomain.on('error', function (err) {
-    self.emit('error', err);
-  });
-
   self.CONNECTED = 'connected';
   self.CONNECTING = 'connecting';
   self.DISCONNECTED = 'disconnected';
@@ -249,7 +243,7 @@ var Client = function (options) {
     var isBelowRetryThreshold = self.connectAttempts < self.connectRetryErrorThreshold;
 
     // We can tolerate a few missed reconnections without emitting a full error.
-    if (isConnectionFailure && isBelowRetryThreshold && err.address == options.socketPath) { // TODO 2
+    if (isConnectionFailure && isBelowRetryThreshold && err.address == options.socketPath) {
       self.emit('warning', err);
     } else {
       self.emit('error', err);
@@ -383,7 +377,7 @@ var Client = function (options) {
     };
     var initHandler = function (err, brokerInfo) {
       if (err) {
-        self._errorDomain.emit('error', err);
+        self.emit('error', err);
       } else {
         self.state = self.CONNECTED;
         self.connectAttempts = 0;
