@@ -185,7 +185,6 @@ var scBroker;
 
 var initBrokerServer = function (options) {
   scBroker = new Broker(options);
-  global.broker = scBroker;
 
   // Create the controller instances now.
   // This is more symmetric to SocketCluster's worker cluster.
