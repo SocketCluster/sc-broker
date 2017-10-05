@@ -94,7 +94,7 @@ var removeAllListeners = function (socket) {
   return channels;
 };
 
-var run = function (query, baseKey) {
+var exec = function (query, baseKey) {
   var rebasedDataMap;
   if (baseKey) {
     rebasedDataMap = dataMap.getRaw(baseKey);
@@ -135,69 +135,92 @@ function handleMasterResponse(message) {
   }
 }
 
-var Broker = function (options) {
-  EventEmitter.call(this);
+var scBroker;
+var scBrokerIsInitialized = false;
 
-  this.id = BROKER_ID;
-  this.type = 'broker';
-  this.options = options;
-  this.instanceId = this.options.instanceId;
-  this.secretKey = this.options.secretKey;
-  this.ipcAckTimeout = this.options.ipcAckTimeout || DEFAULT_IPC_ACK_TIMEOUT;
-  this.debugPort = DEBUG_PORT;
+class SCBroker extends EventEmitter {
+  constructor() {
+    if (scBroker) {
+      var err = new BrokerError('Attempted to instantiate a broker which has already been instantiated');
+      sendErrorToMaster(err);
+    }
+    super();
+    scBroker = this;
 
-  this.dataMap = dataMap;
-  this.dataExpirer = dataExpirer;
-  this.subscriptions = subscriptions;
-};
-
-Broker.prototype = Object.create(EventEmitter.prototype);
-
-Broker.prototype.sendToMaster = function (data, callback) {
-  var messagePacket = {
-    type: 'brokerMessage',
-    brokerId: this.id,
-    data: data
-  };
-  if (callback) {
-    messagePacket.cid = createIPCResponseHandler(this.ipcAckTimeout, callback);
+    this.id = BROKER_ID;
+    this.debugPort = DEBUG_PORT;
+    this.type = 'broker';
+    this.dataMap = dataMap;
+    this.dataExpirer = dataExpirer;
+    this.subscriptions = subscriptions;
   }
-  process.send(messagePacket);
-};
 
-Broker.prototype.run = function (query, baseKey) {
-  return run(query, baseKey);
-};
+  init(options) {
+    this.options = options;
+    this.instanceId = this.options.instanceId;
+    this.secretKey = this.options.secretKey;
+    this.ipcAckTimeout = this.options.ipcAckTimeout || DEFAULT_IPC_ACK_TIMEOUT;
 
-Broker.prototype.publish = function (channel, message) {
-  var sock;
-  for (var i in subscriptions) {
-    if (subscriptions.hasOwnProperty(i)) {
-      sock = subscriptions[i][channel];
-      if (sock && sock instanceof com.ComSocket) {
-        send(sock, {type: 'message', channel: channel, value: message}, pubSubOptions);
+    this.run();
+    scBrokerIsInitialized = true;
+  }
+
+  run() {
+    // Can be overridden by a base class.
+  }
+
+  sendToMaster(data, callback) {
+    var messagePacket = {
+      type: 'brokerMessage',
+      brokerId: this.id,
+      data: data
+    };
+    if (callback) {
+      messagePacket.cid = createIPCResponseHandler(this.ipcAckTimeout, callback);
+    }
+    process.send(messagePacket);
+  }
+
+  exec(query, baseKey) {
+    return exec(query, baseKey);
+  }
+
+  publish(channel, message) {
+    var sock;
+    for (var i in subscriptions) {
+      if (subscriptions.hasOwnProperty(i)) {
+        sock = subscriptions[i][channel];
+        if (sock && sock instanceof com.ComSocket) {
+          send(sock, {type: 'message', channel: channel, value: message}, pubSubOptions);
+        }
       }
     }
   }
-};
+}
 
-var scBroker;
+module.exports.SCBroker = SCBroker;
 
 var initBrokerServer = function (options) {
-  scBroker = new Broker(options);
-
-  // Create the controller instances now.
-  // This is more symmetric to SocketCluster's worker cluster.
-
-  if (INIT_CONTROLLER_PATH != null) {
-    INIT_CONTROLLER = require(INIT_CONTROLLER_PATH);
-    INIT_CONTROLLER.run(scBroker);
+  if (scBroker) {
+    scBroker.init(options);
+  } else {
+    throw new BrokerError('SCBroker was not instantiated in ' + BROKER_CONTROLLER_PATH);
   }
-
-  if (BROKER_CONTROLLER_PATH != null) {
-    BROKER_CONTROLLER = require(BROKER_CONTROLLER_PATH);
-    BROKER_CONTROLLER.run(scBroker);
-  }
+  // TODO 2: Think about what to do with INIT_CONTROLLER_PATH
+  // scBroker = new SCBroker(options);
+  //
+  // // Create the controller instances now.
+  // // This is more symmetric to SocketCluster's worker cluster.
+  //
+  // if (INIT_CONTROLLER_PATH != null) {
+  //   INIT_CONTROLLER = require(INIT_CONTROLLER_PATH);
+  //   INIT_CONTROLLER.run(scBroker);
+  // }
+  //
+  // if (BROKER_CONTROLLER_PATH != null) {
+  //   BROKER_CONTROLLER = require(BROKER_CONTROLLER_PATH);
+  //   BROKER_CONTROLLER.run(scBroker);
+  // }
 };
 
 var pubSubOptions = {
@@ -289,15 +312,15 @@ var actions = {
     send(socket, response);
   },
 
-  run: function (command, socket) {
-    var ret = {id: command.id, type: 'response', action: 'run'};
+  exec: function (command, socket) {
+    var ret = {id: command.id, type: 'response', action: 'exec'};
     try {
-      var result = scBroker.run(command.value, command.baseKey);
+      var result = scBroker.exec(command.value, command.baseKey);
       if (result !== undefined) {
         ret.value = result;
       }
     } catch (e) {
-      var queryErrorPrefix = 'Exception at run(): ';
+      var queryErrorPrefix = 'Exception at exec(): ';
       if (typeof e == 'string') {
         e = queryErrorPrefix + e;
       } else if (typeof e.message == 'string') {
@@ -476,7 +499,7 @@ var handleConnection = function (sock) {
 
     if (initialized[sock.id]) {
       if (initialized[sock.id].deathQuery) {
-        run(initialized[sock.id].deathQuery);
+        exec(initialized[sock.id].deathQuery);
       }
       delete initialized[sock.id];
     }
@@ -532,8 +555,8 @@ process.on('message', function (m) {
     } else if (m.type == 'masterResponse') {
       handleMasterResponse(m);
     } else if (m.type == 'initBrokerServer') {
-      if (scBroker) {
-        var err = new BrokerError('Attempted to initialize broker which has already been initialized');
+      if (scBrokerIsInitialized) {
+        var err = new BrokerError('Attempted to initialize a broker which has already been initialized');
         sendErrorToMaster(err);
       } else {
         initBrokerServer(m.data);

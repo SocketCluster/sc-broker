@@ -17,6 +17,8 @@ var Server = function (options) {
   EventEmitter.call(this);
   var self = this;
 
+  var defaultBrokerControllerPath = __dirname + '/default-broker-controller.js';
+
   var serverOptions = {
     id: options.id,
     debug: options.debug,
@@ -24,7 +26,7 @@ var Server = function (options) {
     port: options.port,
     expiryAccuracy: options.expiryAccuracy,
     downgradeToUser: options.downgradeToUser,
-    brokerControllerPath: options.brokerControllerPath,
+    brokerControllerPath: options.brokerControllerPath || defaultBrokerControllerPath,
     initControllerPath: options.initControllerPath,
     processTermTimeout: options.processTermTimeout
   };
@@ -67,7 +69,7 @@ var Server = function (options) {
   options.brokerOptions.secretKey = options.secretKey;
   options.brokerOptions.instanceId = options.instanceId;
 
-  self._server = fork(__dirname + '/server.js', [stringArgs], execOptions);
+  self._server = fork(serverOptions.brokerControllerPath, [stringArgs], execOptions);
 
   var formatError = function (error) {
     var err = scErrors.hydrateError(error, true);
@@ -294,14 +296,14 @@ var Client = function (options) {
     var subBufLen = self._pendingSubscriptionBuffer.length;
     for (var i = 0; i < subBufLen; i++) {
       var subCommandData = self._pendingSubscriptionBuffer[i];
-      self._exec(subCommandData.command, subCommandData.options);
+      self._execCommand(subCommandData.command, subCommandData.options);
     }
     self._pendingSubscriptionBuffer = [];
 
     var bufLen = self._pendingBuffer.length;
     for (var j = 0; j < bufLen; j++) {
       var commandData = self._pendingBuffer[j];
-      self._exec(commandData.command, commandData.options);
+      self._execCommand(commandData.command, commandData.options);
     }
     self._pendingBuffer = [];
   };
@@ -387,7 +389,7 @@ var Client = function (options) {
       }
     };
     self._prepareAndTrackCommand(command, initHandler);
-    self._exec(command);
+    self._execCommand(command);
   };
 
   self._connect = function () {
@@ -448,7 +450,7 @@ var Client = function (options) {
 
   self._connect();
 
-  self._exec = function (command, options) {
+  self._execCommand = function (command, options) {
     self._socket.write(command, options);
   };
 
@@ -825,9 +827,9 @@ var Client = function (options) {
   };
 
   /*
-    run(query,[ options, callback])
+    exec(query,[ options, callback])
   */
-  self.run = function () {
+  self.exec = function () {
     var data;
     var baseKey = null;
     var noAck = null;
@@ -854,7 +856,7 @@ var Client = function (options) {
 
     if (query) {
       var command = {
-        action: 'run',
+        action: 'exec',
         value: query
       };
 
@@ -879,9 +881,9 @@ var Client = function (options) {
   self.query = function () {
     if (arguments[1] && !(arguments[1] instanceof Function)) {
       var options = {data: arguments[1]};
-      self.run(arguments[0], options, arguments[2]);
+      self.exec(arguments[0], options, arguments[2]);
     } else {
-      self.run.apply(self, arguments);
+      self.exec.apply(self, arguments);
     }
   };
 

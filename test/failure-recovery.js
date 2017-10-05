@@ -5,7 +5,7 @@ var conf = {
   port: 9002,
   timeout: 2000,
   ipcAckTimeout: 1000,
-  brokerControllerPath: __dirname + '/broker-controller-stub',
+  brokerControllerPath: __dirname + '/stubs/broker-controller-stub.js',
   brokerOptions: {
     ipcAckTimeout: 1000
   }

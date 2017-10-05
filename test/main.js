@@ -6,7 +6,7 @@ var conf = {
   port: 9002,
   timeout: 2000,
   ipcAckTimeout: 1000,
-  brokerControllerPath: __dirname + '/broker-controller-stub',
+  brokerControllerPath: __dirname + '/stubs/broker-controller-stub.js',
   brokerOptions: {
     ipcAckTimeout: 1000
   }
@@ -313,13 +313,13 @@ describe('sc-broker client', function () {
     });
   });
 
-  describe('client#run', function () {
+  describe('client#exec', function () {
     it('should execute query functions', function (done) {
       client.set(['one', 'two', 'three', 'four'], val1, function (err) {
 
         var query = function (DataMap) {return DataMap.get(['one', 'two', 'three']);};
 
-        client.run(query, function (err, value) {
+        client.exec(query, function (err, value) {
           var expected = {
             four: val1
           };
@@ -341,7 +341,7 @@ describe('sc-broker client', function () {
       query.data = {
         point: obj
       };
-      client.run(query, function (err, value) {
+      client.exec(query, function (err, value) {
         var expected = {
           x: 1,
           y: 2
