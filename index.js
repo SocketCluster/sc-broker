@@ -86,15 +86,9 @@ var Server = function (options) {
     var err = formatError(error);
     self.emit('error', err);
   });
-  self._server.send({
-    type: 'initBrokerServer',
-    data: options.brokerOptions
-  });
 
   self._server.on('message', function (value) {
-    if (value.type == 'listening') {
-      self.emit('ready', value.data);
-    } else if (value.type == 'error') {
+    if (value.type == 'error') {
       var err = formatError(value.data);
       self.emit('error', err);
     } else if (value.type == 'brokerMessage') {
@@ -116,6 +110,13 @@ var Server = function (options) {
         var properError = scErrors.hydrateError(value.error, true);
         responseHandler.callback(properError, value.data, value.brokerId);
       }
+    } else if (value.type == 'listening') {
+      self.emit('ready', value.data);
+    } else if (value.type == 'readyToInit') {
+      self._server.send({
+        type: 'initBrokerServer',
+        data: options.brokerOptions
+      });
     }
   });
 

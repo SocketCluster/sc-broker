@@ -597,3 +597,7 @@ process.on('uncaughtException', function (err) {
   sendErrorToMaster(err);
   process.exit(1);
 });
+
+process.send({
+  type: 'readyToInit'
+});
