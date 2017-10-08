@@ -5,11 +5,16 @@ var conf = {
   port: 9002,
   timeout: 2000,
   ipcAckTimeout: 1000,
-  brokerControllerPath: __dirname + '/stubs/broker-controller-stub.js',
   brokerOptions: {
     ipcAckTimeout: 1000
   }
 };
+
+if (process.env.TEST_TYPE == 'es6') {
+  conf.brokerControllerPath =  __dirname + '/stubs/broker-controller-stub.mjs';
+} else {
+  conf.brokerControllerPath =  __dirname + '/stubs/broker-controller-stub.js';
+}
 
 var server;
 var client;
