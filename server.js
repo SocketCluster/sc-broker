@@ -153,6 +153,10 @@ class SCBroker extends EventEmitter {
     this.dataMap = dataMap;
     this.dataExpirer = dataExpirer;
     this.subscriptions = subscriptions;
+
+    process.send({
+      type: 'readyToInit'
+    });
   }
 
   init(options) {
@@ -201,11 +205,8 @@ class SCBroker extends EventEmitter {
 module.exports.SCBroker = SCBroker;
 
 var initBrokerServer = function (options) {
-  if (scBroker) {
-    scBroker.init(options);
-  } else {
-    throw new BrokerError('SCBroker was not instantiated in ' + BROKER_CONTROLLER_PATH);
-  }
+  scBroker.init(options);
+
   // TODO 2: Think about what to do with INIT_CONTROLLER_PATH
   // scBroker = new SCBroker(options);
   //
@@ -596,8 +597,4 @@ setInterval(function () {
 process.on('uncaughtException', function (err) {
   sendErrorToMaster(err);
   process.exit(1);
-});
-
-process.send({
-  type: 'readyToInit'
 });
