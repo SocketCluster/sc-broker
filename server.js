@@ -138,91 +138,69 @@ function handleMasterResponse(message) {
 var scBroker;
 var scBrokerIsInitialized = false;
 
-class SCBroker extends EventEmitter {
-  constructor() {
-    if (scBroker) {
-      var err = new BrokerError('Attempted to instantiate a broker which has already been instantiated');
-      sendErrorToMaster(err);
-    }
-    super();
-    scBroker = this;
-
-    this.id = BROKER_ID;
-    this.debugPort = DEBUG_PORT;
-    this.type = 'broker';
-    this.dataMap = dataMap;
-    this.dataExpirer = dataExpirer;
-    this.subscriptions = subscriptions;
-
-    process.send({
-      type: 'readyToInit'
-    });
+function SCBroker() {
+  if (scBroker) {
+    var err = new BrokerError('Attempted to instantiate a broker which has already been instantiated');
+    sendErrorToMaster(err);
   }
+  EventEmitter.call(this);
+  scBroker = this;
 
-  init(options) {
-    this.options = options;
-    this.instanceId = this.options.instanceId;
-    this.secretKey = this.options.secretKey;
-    this.ipcAckTimeout = this.options.ipcAckTimeout || DEFAULT_IPC_ACK_TIMEOUT;
+  this.id = BROKER_ID;
+  this.debugPort = DEBUG_PORT;
+  this.type = 'broker';
+  this.dataMap = dataMap;
+  this.dataExpirer = dataExpirer;
+  this.subscriptions = subscriptions;
 
-    this.run();
-    scBrokerIsInitialized = true;
+  process.send({
+    type: 'readyToInit'
+  });
+}
+
+SCBroker.prototype = Object.create(EventEmitter.prototype);
+
+SCBroker.prototype.init = function (options) {
+  this.options = options;
+  this.instanceId = this.options.instanceId;
+  this.secretKey = this.options.secretKey;
+  this.ipcAckTimeout = this.options.ipcAckTimeout || DEFAULT_IPC_ACK_TIMEOUT;
+
+  scBrokerIsInitialized = true;
+  this.run();
+};
+
+SCBroker.prototype.run = function () {};
+
+SCBroker.prototype.sendToMaster = function (data, callback) {
+  var messagePacket = {
+    type: 'brokerMessage',
+    brokerId: this.id,
+    data: data
+  };
+  if (callback) {
+    messagePacket.cid = createIPCResponseHandler(this.ipcAckTimeout, callback);
   }
+  process.send(messagePacket);
+};
 
-  run() {
-    // Can be overridden by a base class.
-  }
+SCBroker.prototype.exec = function (query, baseKey) {
+  return exec(query, baseKey);
+};
 
-  sendToMaster(data, callback) {
-    var messagePacket = {
-      type: 'brokerMessage',
-      brokerId: this.id,
-      data: data
-    };
-    if (callback) {
-      messagePacket.cid = createIPCResponseHandler(this.ipcAckTimeout, callback);
-    }
-    process.send(messagePacket);
-  }
-
-  exec(query, baseKey) {
-    return exec(query, baseKey);
-  }
-
-  publish(channel, message) {
-    var sock;
-    for (var i in subscriptions) {
-      if (subscriptions.hasOwnProperty(i)) {
-        sock = subscriptions[i][channel];
-        if (sock && sock instanceof com.ComSocket) {
-          send(sock, {type: 'message', channel: channel, value: message}, pubSubOptions);
-        }
+SCBroker.prototype.publish = function (channel, message) {
+  var sock;
+  for (var i in subscriptions) {
+    if (subscriptions.hasOwnProperty(i)) {
+      sock = subscriptions[i][channel];
+      if (sock && sock instanceof com.ComSocket) {
+        send(sock, {type: 'message', channel: channel, value: message}, pubSubOptions);
       }
     }
   }
-}
+};
 
 module.exports.SCBroker = SCBroker;
-
-var initBrokerServer = function (options) {
-  scBroker.init(options);
-
-  // TODO 2: Think about what to do with INIT_CONTROLLER_PATH
-  // scBroker = new SCBroker(options);
-  //
-  // // Create the controller instances now.
-  // // This is more symmetric to SocketCluster's worker cluster.
-  //
-  // if (INIT_CONTROLLER_PATH != null) {
-  //   INIT_CONTROLLER = require(INIT_CONTROLLER_PATH);
-  //   INIT_CONTROLLER.run(scBroker);
-  // }
-  //
-  // if (BROKER_CONTROLLER_PATH != null) {
-  //   BROKER_CONTROLLER = require(BROKER_CONTROLLER_PATH);
-  //   BROKER_CONTROLLER.run(scBroker);
-  // }
-};
 
 var pubSubOptions = {
   batch: true
@@ -560,7 +538,23 @@ process.on('message', function (m) {
         var err = new BrokerError('Attempted to initialize a broker which has already been initialized');
         sendErrorToMaster(err);
       } else {
-        initBrokerServer(m.data);
+        scBroker.init(m.data);
+
+        // TODO 2: Think about what to do with INIT_CONTROLLER_PATH
+        // scBroker = new SCBroker(options);
+        //
+        // // Create the controller instances now.
+        // // This is more symmetric to SocketCluster's worker cluster.
+        //
+        // if (INIT_CONTROLLER_PATH != null) {
+        //   INIT_CONTROLLER = require(INIT_CONTROLLER_PATH);
+        //   INIT_CONTROLLER.run(scBroker);
+        // }
+        //
+        // if (BROKER_CONTROLLER_PATH != null) {
+        //   BROKER_CONTROLLER = require(BROKER_CONTROLLER_PATH);
+        //   BROKER_CONTROLLER.run(scBroker);
+        // }
         comServerListen();
       }
     }
