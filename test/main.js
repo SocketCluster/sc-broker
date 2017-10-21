@@ -582,7 +582,7 @@ describe('sc-broker client', function () {
 
   var etsec = 1;
   describe('client#expire', function () {
-    it('value should be expired 1000ms after the given  time.', function (done) {
+    it('value should be expired 1000ms after the given time.', function (done) {
       client.set(['check', 'expire', 'key'], 'some data', function (err) {
         client.expire([['check', 'expire', 'key']], etsec);
         setTimeout(function () {

@@ -16,6 +16,8 @@ var INIT_CONTROLLER = null;
 var BROKER_CONTROLLER = null;
 var DEFAULT_IPC_ACK_TIMEOUT = 10000;
 
+var brokerInitOptions = JSON.parse(process.env.brokerInitOptions);
+
 var EventEmitter = require('events').EventEmitter;
 
 var fs = require('fs');
@@ -136,7 +138,6 @@ function handleMasterResponse(message) {
 }
 
 var scBroker;
-var scBrokerIsInitialized = false;
 
 function SCBroker() {
   if (scBroker) {
@@ -153,21 +154,20 @@ function SCBroker() {
   this.dataExpirer = dataExpirer;
   this.subscriptions = subscriptions;
 
-  process.send({
-    type: 'readyToInit'
-  });
+  this._init(brokerInitOptions);
 }
 
 SCBroker.prototype = Object.create(EventEmitter.prototype);
 
-SCBroker.prototype.init = function (options) {
+SCBroker.prototype._init = function (options) {
   this.options = options;
   this.instanceId = this.options.instanceId;
   this.secretKey = this.options.secretKey;
   this.ipcAckTimeout = this.options.ipcAckTimeout || DEFAULT_IPC_ACK_TIMEOUT;
 
-  scBrokerIsInitialized = true;
   this.run();
+
+  comServerListen();
 };
 
 SCBroker.prototype.run = function () {};
@@ -533,30 +533,6 @@ process.on('message', function (m) {
       });
     } else if (m.type == 'masterResponse') {
       handleMasterResponse(m);
-    } else if (m.type == 'initBrokerServer') {
-      if (scBrokerIsInitialized) {
-        var err = new BrokerError('Attempted to initialize a broker which has already been initialized');
-        sendErrorToMaster(err);
-      } else {
-        scBroker.init(m.data);
-
-        // TODO 2: Think about what to do with INIT_CONTROLLER_PATH
-        // scBroker = new SCBroker(options);
-        //
-        // // Create the controller instances now.
-        // // This is more symmetric to SocketCluster's worker cluster.
-        //
-        // if (INIT_CONTROLLER_PATH != null) {
-        //   INIT_CONTROLLER = require(INIT_CONTROLLER_PATH);
-        //   INIT_CONTROLLER.run(scBroker);
-        // }
-        //
-        // if (BROKER_CONTROLLER_PATH != null) {
-        //   BROKER_CONTROLLER = require(BROKER_CONTROLLER_PATH);
-        //   BROKER_CONTROLLER.run(scBroker);
-        // }
-        comServerListen();
-      }
     }
   }
 });

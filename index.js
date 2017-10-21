@@ -42,21 +42,6 @@ var Server = function (options) {
     self.port = options.port;
   }
 
-  // Brokers should not inherit the master --debug argument
-  // because they have their own --debug-brokers option.
-  var execOptions = {
-    execArgv: process.execArgv.filter(function (arg) {
-      return arg != '--debug' && arg != '--debug-brk' && arg != '--inspect'
-    })
-  };
-
-  if (options.debug) {
-    execOptions.execArgv.push('--debug=' + options.debug);
-  }
-  if (options.inspect) {
-    execOptions.execArgv.push('--inspect=' + options.inspect);
-  }
-
   if (options.ipcAckTimeout == null) {
     self.ipcAckTimeout = DEFAULT_IPC_ACK_TIMEOUT;
   } else {
@@ -68,6 +53,24 @@ var Server = function (options) {
   }
   options.brokerOptions.secretKey = options.secretKey;
   options.brokerOptions.instanceId = options.instanceId;
+
+  // Brokers should not inherit the master --debug argument
+  // because they have their own --debug-brokers option.
+  var execOptions = {
+    execArgv: process.execArgv.filter(function (arg) {
+      return arg != '--debug' && arg != '--debug-brk' && arg != '--inspect'
+    }),
+    env: {
+      brokerInitOptions: JSON.stringify(options.brokerOptions)
+    }
+  };
+
+  if (options.debug) {
+    execOptions.execArgv.push('--debug=' + options.debug);
+  }
+  if (options.inspect) {
+    execOptions.execArgv.push('--inspect=' + options.inspect);
+  }
 
   self._server = fork(serverOptions.brokerControllerPath, [stringArgs], execOptions);
 
@@ -112,11 +115,6 @@ var Server = function (options) {
       }
     } else if (value.type == 'listening') {
       self.emit('ready', value.data);
-    } else if (value.type == 'readyToInit') {
-      self._server.send({
-        type: 'initBrokerServer',
-        data: options.brokerOptions
-      });
     }
   });
 
