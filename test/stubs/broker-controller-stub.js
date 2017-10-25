@@ -1,4 +1,4 @@
-var SCBroker = require('../../server').SCBroker;
+var SCBroker = require('../../scbroker');
 var scErrors = require('sc-errors');
 
 class BrokerControllerStub extends SCBroker {

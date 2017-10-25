@@ -1,2 +1,2 @@
-var SCBroker = require('./server').SCBroker;
+var SCBroker = require('./scbroker');
 new SCBroker();

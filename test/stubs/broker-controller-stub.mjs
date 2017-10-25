@@ -1,9 +1,7 @@
 // To test with .mjs (ES6 modules)
 
-import server from '../../server';
+import SCBroker from '../../scbroker';
 import scErrors from 'sc-errors';
-
-var SCBroker = server.SCBroker;
 
 class BrokerControllerStub extends SCBroker {
   run() {

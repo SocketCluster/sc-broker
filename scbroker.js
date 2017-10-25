@@ -200,7 +200,7 @@ SCBroker.prototype.publish = function (channel, message) {
   }
 };
 
-module.exports.SCBroker = SCBroker;
+module.exports = SCBroker;
 
 var pubSubOptions = {
   batch: true
