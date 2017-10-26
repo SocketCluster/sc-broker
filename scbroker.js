@@ -8,7 +8,6 @@ var BROKER_ID = args.id || 0;
 var SOCKET_PATH = args.socketPath;
 var EXPIRY_ACCURACY = args.expiryAccuracy || 1000;
 var BROKER_CONTROLLER_PATH = args.brokerControllerPath;
-var INIT_CONTROLLER_PATH = args.initControllerPath || null;
 var DOWNGRADE_TO_USER = args.downgradeToUser;
 var PROCESS_TERM_TIMEOUT = args.processTermTimeout || 10000;
 var DEBUG_PORT = args.debug || null;
@@ -142,7 +141,7 @@ var scBroker;
 function SCBroker() {
   if (scBroker) {
     var err = new BrokerError('Attempted to instantiate a broker which has already been instantiated');
-    sendErrorToMaster(err);
+    throw err;
   }
   EventEmitter.call(this);
   scBroker = this;
@@ -199,8 +198,6 @@ SCBroker.prototype.publish = function (channel, message) {
     }
   }
 };
-
-module.exports = SCBroker;
 
 var pubSubOptions = {
   batch: true
@@ -520,17 +517,24 @@ var comServerListen = function () {
 process.on('message', function (m) {
   if (m) {
     if (m.type == 'masterMessage') {
-      scBroker.emit('masterMessage', m.data, function (err, data) {
-        if (m.cid) {
-          process.send({
-            type: 'brokerResponse',
-            brokerId: scBroker.id,
-            error: scErrors.dehydrateError(err, true),
-            data: data,
-            rid: m.cid
-          });
-        }
-      });
+      if (scBroker) {
+        scBroker.emit('masterMessage', m.data, function (err, data) {
+          if (m.cid) {
+            process.send({
+              type: 'brokerResponse',
+              brokerId: scBroker.id,
+              error: scErrors.dehydrateError(err, true),
+              data: data,
+              rid: m.cid
+            });
+          }
+        });
+      } else {
+        var errorMessage = 'Cannot send message to broker with id ' + BROKER_ID +
+        ' because the broker was not instantiated';
+        var err = new BrokerError(errorMessage);
+        sendErrorToMaster(err);
+      }
     } else if (m.type == 'masterResponse') {
       handleMasterResponse(m);
     }
@@ -568,3 +572,5 @@ process.on('uncaughtException', function (err) {
   sendErrorToMaster(err);
   process.exit(1);
 });
+
+module.exports = SCBroker;

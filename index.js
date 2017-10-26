@@ -27,7 +27,6 @@ var Server = function (options) {
     expiryAccuracy: options.expiryAccuracy,
     downgradeToUser: options.downgradeToUser,
     brokerControllerPath: options.brokerControllerPath || defaultBrokerControllerPath,
-    initControllerPath: options.initControllerPath,
     processTermTimeout: options.processTermTimeout
   };
 
