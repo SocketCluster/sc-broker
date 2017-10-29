@@ -138,12 +138,14 @@ function handleMasterResponse(message) {
 
 var scBroker;
 
-function SCBroker() {
+function SCBroker(options) {
   if (scBroker) {
     var err = new BrokerError('Attempted to instantiate a broker which has already been instantiated');
     throw err;
   }
+
   EventEmitter.call(this);
+  options = options || {};
   scBroker = this;
 
   this.id = BROKER_ID;
@@ -153,8 +155,16 @@ function SCBroker() {
   this.dataExpirer = dataExpirer;
   this.subscriptions = subscriptions;
 
+  if (options.run != null) {
+    this.run = options.run;
+  }
+
   this._init(brokerInitOptions);
 }
+
+SCBroker.create = function (options) {
+  return new SCBroker(options);
+};
 
 SCBroker.prototype = Object.create(EventEmitter.prototype);
 
