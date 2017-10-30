@@ -79,16 +79,16 @@ see how you can use keys in *scBroker*. Also, note that the callback argument in
 all of the following cases is optional.)
 
 
-#### run
+#### exec
 
 ```js
-run(code,[data,] callback)
+exec(code,[data,] callback)
 ```
 Run a special JavaScript function
 declaration (code) as a query *on the scBroker server*. This function declaration
 accepts the DataMap as a parameter.
 This is the most important function in *scBroker*, all the other functions are
-basically utility functions to make things quicker. Using run() offers the
+basically utility functions to make things quicker. Using exec() offers the
 most flexibility. The *callback* is in form:
 ```
 callback(err, data)
@@ -107,7 +107,7 @@ queryFn.data = {
     myMessage: 'This is an important message'
 };
 
-client.run(queryFn, function (err, data) {
+client.exec(queryFn, function (err, data) {
     console.log(data); // outputs {message: "This is an important message"}
 });
 ```
