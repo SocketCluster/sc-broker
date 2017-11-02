@@ -59,10 +59,13 @@ var Server = function (options) {
     execArgv: process.execArgv.filter(function (arg) {
       return arg != '--debug' && arg != '--debug-brk' && arg != '--inspect'
     }),
-    env: {
-      brokerInitOptions: JSON.stringify(options.brokerOptions)
-    }
+    env: {}
   };
+
+  Object.keys(process.env).forEach(function (key) {
+    execOptions.env[key] = process.env[key];
+  });
+  execOptions.env.brokerInitOptions = JSON.stringify(options.brokerOptions);
 
   if (options.debug) {
     execOptions.execArgv.push('--debug=' + options.debug);
