@@ -174,9 +174,8 @@ SCBroker.prototype._init = function (options) {
   this.secretKey = this.options.secretKey;
   this.ipcAckTimeout = this.options.ipcAckTimeout || DEFAULT_IPC_ACK_TIMEOUT;
 
-  this.run();
-
-  comServerListen();
+  var runResult = this.run();
+  Promise.resolve(runResult).then(comServerListen);
 };
 
 SCBroker.prototype.run = function () {};
