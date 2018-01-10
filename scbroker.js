@@ -175,7 +175,9 @@ SCBroker.prototype._init = function (options) {
   this.ipcAckTimeout = this.options.ipcAckTimeout || DEFAULT_IPC_ACK_TIMEOUT;
 
   var runResult = this.run();
-  Promise.resolve(runResult).then(comServerListen);
+  Promise.resolve(runResult)
+    .then(comServerListen)
+    .catch(sendErrorToMaster);
 };
 
 SCBroker.prototype.run = function () {};
