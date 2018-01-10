@@ -31,9 +31,16 @@ var TimeoutError = scErrors.TimeoutError;
 
 var initialized = {};
 
+// Non-fatal error.
 var sendErrorToMaster = function (err) {
   var error = scErrors.dehydrateError(err, true);
   process.send({type: 'error', data: error});
+};
+
+// Fatal error.
+var exitWithError = function (err) {
+  sendErrorToMaster(err);
+  process.exit(1);
 };
 
 if (DOWNGRADE_TO_USER && process.setuid) {
@@ -176,8 +183,8 @@ SCBroker.prototype._init = function (options) {
 
   var runResult = this.run();
   Promise.resolve(runResult)
-    .then(comServerListen)
-    .catch(sendErrorToMaster);
+  .then(comServerListen)
+  .catch(exitWithError);
 };
 
 SCBroker.prototype.run = function () {};
@@ -579,9 +586,6 @@ setInterval(function () {
   }
 }, EXPIRY_ACCURACY);
 
-process.on('uncaughtException', function (err) {
-  sendErrorToMaster(err);
-  process.exit(1);
-});
+process.on('uncaughtException', exitWithError);
 
 module.exports = SCBroker;
