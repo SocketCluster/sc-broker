@@ -53,11 +53,16 @@ var Server = function (options) {
   options.brokerOptions.secretKey = options.secretKey;
   options.brokerOptions.instanceId = options.instanceId;
 
+  var debugRegex = /^--debug(=[0-9]*)?$/;
+  var debugBrkRegex = /^--debug-brk(=[0-9]*)?$/;
+  var inspectRegex = /^--inspect(=[0-9]*)?$/;
+  var inspectBrkRegex = /^--inspect-brk(=[0-9]*)?$/;
+
   // Brokers should not inherit the master --debug argument
   // because they have their own --debug-brokers option.
   var execOptions = {
     execArgv: process.execArgv.filter(function (arg) {
-      return arg != '--debug' && arg != '--debug-brk' && arg != '--inspect'
+      return !debugRegex.test(arg) && !debugBrkRegex.test(arg) && !inspectRegex.test(arg) && !inspectBrkRegex.test(arg);
     }),
     env: {}
   };
