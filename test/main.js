@@ -593,7 +593,7 @@ describe('sc-broker client', function () {
             assert(JSON.stringify(value) == JSON.stringify(expected));
             done();
           });
-        }, etsec * 1000 + 800);
+        }, etsec * 1000 * 2.1);
       });
     });
   });
