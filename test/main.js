@@ -535,9 +535,11 @@ describe('sc-broker client', function () {
   });
 
   var ch1 = 'foo'
-    , ch2 = 'bar';
+    , ch2 = 'bar'
+    , badChannel = 'badChannel'
+    , silentChannel = 'silentChannel';
   describe('client#subscriptions', function () {
-    it('should have no subsscriptions (empty array)', function (done) {
+    it('should have no subscriptions (empty array)', function (done) {
       assert(JSON.stringify(client.subscriptions()) == JSON.stringify([]));
       done();
     });
@@ -558,6 +560,15 @@ describe('sc-broker client', function () {
         done();
       });
     });
+
+    it('can be blocked by middleware', function(done) {
+      client.subscribe(badChannel, function (err) {
+        assert.strictEqual(client.isSubscribed(badChannel), false);
+        assert(!client.subscriptions().find(function(s) { s === badChannel }));
+        assert(/bad channel/.test(err.message));
+        done();
+      });
+    });
   });
 
   describe('client#unsubscriptions', function () {
@@ -575,6 +586,21 @@ describe('sc-broker client', function () {
       client.publish(ch2, ['a','b'], function (err) {
         console.log(err);
         assert.equal(_.isNull(err), true);
+        done();
+      });
+    });
+
+    it('can be blocked by middleware', function (done) {
+      client.publish(silentChannel, ['a','b'], function (err) {
+        assert(/silent channel/.test(err.message));
+        done();
+      });
+    });
+
+    it('can be transformed by middleware', function(done) {
+      client.publish(ch2, 'test message', function (err, value) {
+        assert(!err);
+        assert.strictEqual(value, 'transformed test message')
         done();
       });
     });

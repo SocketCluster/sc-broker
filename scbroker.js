@@ -19,6 +19,7 @@ var brokerInitOptions = JSON.parse(process.env.brokerInitOptions);
 
 var EventEmitter = require('events').EventEmitter;
 
+var async = require('async');
 var fs = require('fs');
 var uuid = require('uuid');
 var com = require('ncom');
@@ -28,6 +29,8 @@ var FlexiMap = require('fleximap').FlexiMap;
 var scErrors = require('sc-errors');
 var BrokerError = scErrors.BrokerError;
 var TimeoutError = scErrors.TimeoutError;
+var InvalidArgumentsError = scErrors.InvalidArgumentsError;
+var InvalidActionError = scErrors.InvalidActionError;
 
 var initialized = {};
 
@@ -162,6 +165,12 @@ function SCBroker(options) {
   this.dataExpirer = dataExpirer;
   this.subscriptions = subscriptions;
 
+  this.MIDDLEWARE_SUBSCRIBE = 'subscribe';
+  this.MIDDLEWARE_PUBLISH_IN = 'publishIn';
+  this._middleware = {};
+  this._middleware[this.MIDDLEWARE_SUBSCRIBE] = [];
+  this._middleware[this.MIDDLEWARE_PUBLISH_IN] = [];
+
   if (options.run != null) {
     this.run = options.run;
   }
@@ -215,6 +224,52 @@ SCBroker.prototype.publish = function (channel, message) {
       }
     }
   }
+};
+
+SCBroker.prototype._passThroughMiddleware = function(command, socket, cb) {
+  var self = this;
+  var action = command.action;
+  var callbackInvoked = false;
+
+  var applyEachMiddleware = function(type, req, cb) {
+    async.applyEachSeries(self._middleware[type], req, function(err) {
+      if (callbackInvoked) {
+        self.emit('warning', new InvalidActionError(`Callback for ${type} middleware was already invoked`));
+      } else {
+        callbackInvoked = true;
+        cb(err, req);
+      }
+    });
+  }
+
+  if (action === 'subscribe') {
+    var req = { socket: socket, channel: command.channel };
+    applyEachMiddleware(this.MIDDLEWARE_SUBSCRIBE, req, cb);
+  } else if (action === 'publish') {
+    var req = { socket: socket, channel: command.channel, command: command };
+    applyEachMiddleware(this.MIDDLEWARE_PUBLISH_IN, req, cb);
+  } else {
+    cb(null);
+  }
+}
+
+SCBroker.prototype.addMiddleware = function(type, middleware) {
+  if (!this._middleware[type]) {
+    throw new InvalidArgumentsError(`Middleware type "${type}" is not supported`);
+  }
+
+  this._middleware[type].push(middleware);
+}
+
+SCBroker.prototype.removeMiddleware = function (type, middleware) {
+  var middlewareFunctions = this._middleware[type];
+  if (!middlewareFunctions) {
+    throw new InvalidArgumentsError(`Middleware type "${type}" is not supported`);
+  }
+
+  this._middleware[type] = middlewareFunctions.filter(function (fn) {
+    return fn != middleware;
+  });
 };
 
 var pubSubOptions = {
@@ -473,14 +528,18 @@ var handleConnection = function (sock) {
 
   sock.on('message', function (command) {
     if (initialized.hasOwnProperty(sock.id) || command.action == 'init') {
-      try {
-        if (actions[command.action]) {
-          actions[command.action](command, sock);
+      scBroker._passThroughMiddleware(command, sock, function(err) {
+        try {
+          if (err) {
+            throw err;
+          } else if (actions[command.action]) {
+            actions[command.action](command, sock);
+          }
+        } catch (err) {
+          err = scErrors.dehydrateError(err, true);
+          send(sock, {id: command.id, type: 'response', action:  command.action, error: err});
         }
-      } catch (err) {
-        err = scErrors.dehydrateError(err, true);
-        send(sock, {id: command.id, type: 'response', action:  command.action, error: err});
-      }
+      });
     } else {
       var err = new BrokerError('Cannot process command before init handshake');
       err = scErrors.dehydrateError(err, true);

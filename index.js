@@ -573,7 +573,8 @@ var Client = function (options) {
     var command = {
       action: 'publish',
       channel: channel,
-      value: value
+      value: value,
+      getValue: 1
     };
 
     var execOptions = self._getPubSubExecOptions();

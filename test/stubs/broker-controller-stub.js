@@ -1,11 +1,13 @@
 var SCBroker = require('../../scbroker');
 var scErrors = require('sc-errors');
+var addMiddleware = require('./middleware');
 
 class BrokerControllerStub extends SCBroker {
   run() {
     var self = this;
 
     console.log('Start broker');
+    addMiddleware(self);
 
     self.on('masterMessage', function (data, respond) {
       if (data.killBroker) {
