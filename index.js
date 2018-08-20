@@ -244,7 +244,7 @@ var Client = function (options) {
   self.pendingReconnect = false;
   self.pendingReconnectTimeout = null;
 
-  var createSocket = function() {
+  var createSocket = function () {
     if (self._socket) {
       self._socket.removeAllListeners();
     }
@@ -463,7 +463,7 @@ var Client = function (options) {
     self._socket.write(command, options);
   };
 
-  self.isConnected = function() {
+  self.isConnected = function () {
     return self.state == self.CONNECTED;
   };
 

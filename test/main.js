@@ -561,10 +561,10 @@ describe('sc-broker client', function () {
       });
     });
 
-    it('can be blocked by middleware', function(done) {
+    it('can be blocked by middleware', function (done) {
       client.subscribe(badChannel, function (err) {
         assert.strictEqual(client.isSubscribed(badChannel), false);
-        assert(!client.subscriptions().find(function(s) { s === badChannel }));
+        assert(!client.subscriptions().find(function (s) { s === badChannel }));
         assert(/bad channel/.test(err.message));
         done();
       });
@@ -597,7 +597,7 @@ describe('sc-broker client', function () {
       });
     });
 
-    it('can be transformed by middleware', function(done) {
+    it('can be transformed by middleware', function (done) {
       client.publish(ch2, 'test message', function (err, value) {
         assert(!err);
         assert.strictEqual(value, 'transformed test message')

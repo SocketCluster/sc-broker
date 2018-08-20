@@ -1,5 +1,5 @@
-module.exports = function(scBroker) {
-  scBroker.addMiddleware(scBroker.MIDDLEWARE_SUBSCRIBE, function(req, next) {
+module.exports = function (scBroker) {
+  scBroker.addMiddleware(scBroker.MIDDLEWARE_SUBSCRIBE, function (req, next) {
     if (req.channel === 'badChannel') {
       return next(new Error('bad channel'));
     }
@@ -7,7 +7,7 @@ module.exports = function(scBroker) {
     next();
   });
 
-  scBroker.addMiddleware(scBroker.MIDDLEWARE_PUBLISH_IN, function(req, next) {
+  scBroker.addMiddleware(scBroker.MIDDLEWARE_PUBLISH_IN, function (req, next) {
     if (req.channel === 'silentChannel') {
       return next(new Error('silent channel'));
     } else if (req.command.value === 'test message') {
@@ -18,7 +18,7 @@ module.exports = function(scBroker) {
   });
 
   // Ensure middleware can be removed
-  let badMiddleware = function(req, next) {
+  let badMiddleware = function (req, next) {
     throw new Error('This code should be unreachable!');
   };
   scBroker.addMiddleware(scBroker.MIDDLEWARE_SUBSCRIBE, badMiddleware);

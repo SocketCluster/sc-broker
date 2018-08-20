@@ -226,13 +226,13 @@ SCBroker.prototype.publish = function (channel, message) {
   }
 };
 
-SCBroker.prototype._passThroughMiddleware = function(command, socket, cb) {
+SCBroker.prototype._passThroughMiddleware = function (command, socket, cb) {
   var self = this;
   var action = command.action;
   var callbackInvoked = false;
 
-  var applyEachMiddleware = function(type, req, cb) {
-    async.applyEachSeries(self._middleware[type], req, function(err) {
+  var applyEachMiddleware = function (type, req, cb) {
+    async.applyEachSeries(self._middleware[type], req, function (err) {
       if (callbackInvoked) {
         self.emit('warning', new InvalidActionError(`Callback for ${type} middleware was already invoked`));
       } else {
@@ -253,7 +253,7 @@ SCBroker.prototype._passThroughMiddleware = function(command, socket, cb) {
   }
 }
 
-SCBroker.prototype.addMiddleware = function(type, middleware) {
+SCBroker.prototype.addMiddleware = function (type, middleware) {
   if (!this._middleware[type]) {
     throw new InvalidArgumentsError(`Middleware type "${type}" is not supported`);
   }
@@ -528,7 +528,7 @@ var handleConnection = function (sock) {
 
   sock.on('message', function (command) {
     if (initialized.hasOwnProperty(sock.id) || command.action == 'init') {
-      scBroker._passThroughMiddleware(command, sock, function(err) {
+      scBroker._passThroughMiddleware(command, sock, function (err) {
         try {
           if (err) {
             throw err;
