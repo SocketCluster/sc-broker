@@ -244,22 +244,55 @@ var Client = function (options) {
   self.pendingReconnect = false;
   self.pendingReconnectTimeout = null;
 
-  self._socket = new ComSocket();
-
-  self._socket.on('error', function (err) {
-    var isConnectionFailure = err.code == 'ENOENT' || err.code == 'ECONNREFUSED';
-    var isBelowRetryThreshold = self.connectAttempts < self.connectRetryErrorThreshold;
-
-    // We can tolerate a few missed reconnections without emitting a full error.
-    if (isConnectionFailure && isBelowRetryThreshold && err.address == options.socketPath) {
-      self.emit('warning', err);
-    } else {
-      self.emit('error', err);
+  var createSocket = function() {
+    if (self._socket) {
+      self._socket.removeAllListeners();
     }
-  });
 
-  if (options.pubSubBatchDuration != null) {
-    self._socket.batchDuration = options.pubSubBatchDuration;
+    self._socket = new ComSocket();
+    if (options.pubSubBatchDuration != null) {
+      self._socket.batchDuration = options.pubSubBatchDuration;
+    }
+
+    self._socket.on('connect', self._connectHandler);
+    self._socket.on('error', function (err) {
+      var isConnectionFailure = err.code == 'ENOENT' || err.code == 'ECONNREFUSED';
+      var isBelowRetryThreshold = self.connectAttempts < self.connectRetryErrorThreshold;
+
+      // We can tolerate a few missed reconnections without emitting a full error.
+      if (isConnectionFailure && isBelowRetryThreshold && err.address == options.socketPath) {
+        self.emit('warning', err);
+      } else {
+        self.emit('error', err);
+      }
+    });
+    self._socket.on('close', handleDisconnection);
+    self._socket.on('end', handleDisconnection);
+    self._socket.on('message', function (response) {
+      var id = response.id;
+      var rawError = response.error;
+      var error = null;
+      if (rawError != null) {
+        error = scErrors.hydrateError(rawError, true);
+      }
+      if (response.type == 'response') {
+        if (self._commandMap.hasOwnProperty(id)) {
+          clearTimeout(self._commandMap[id].timeout);
+          var action = response.action;
+
+          var callback = self._commandMap[id].callback;
+          delete self._commandMap[id];
+
+          if (response.value !== undefined) {
+            callback(error, response.value);
+          } else {
+            callback(error);
+          }
+        }
+      } else if (response.type == 'message') {
+        self.emit('message', response.channel, response.value);
+      }
+    });
   }
 
   self._curID = 1;
@@ -404,14 +437,13 @@ var Client = function (options) {
       self.pendingReconnectTimeout = null;
       clearTimeout(self._reconnectTimeoutRef);
       self.state = self.CONNECTING;
+      createSocket();
 
       if (self.socketPath) {
         self._socket.connect(self.socketPath);
       } else {
         self._socket.connect(self.port, self.host);
       }
-      self._socket.removeListener('connect', self._connectHandler);
-      self._socket.on('connect', self._connectHandler);
     }
   };
 
@@ -424,35 +456,6 @@ var Client = function (options) {
     self._pendingSubscriptionBuffer = [];
     self._tryReconnect();
   };
-
-  self._socket.on('close', handleDisconnection);
-  self._socket.on('end', handleDisconnection);
-
-  self._socket.on('message', function (response) {
-    var id = response.id;
-    var rawError = response.error;
-    var error = null;
-    if (rawError != null) {
-      error = scErrors.hydrateError(rawError, true);
-    }
-    if (response.type == 'response') {
-      if (self._commandMap.hasOwnProperty(id)) {
-        clearTimeout(self._commandMap[id].timeout);
-        var action = response.action;
-
-        var callback = self._commandMap[id].callback;
-        delete self._commandMap[id];
-
-        if (response.value !== undefined) {
-          callback(error, response.value);
-        } else {
-          callback(error);
-        }
-      }
-    } else if (response.type == 'message') {
-      self.emit('message', response.channel, response.value);
-    }
-  });
 
   self._connect();
 
@@ -570,7 +573,8 @@ var Client = function (options) {
     var command = {
       action: 'publish',
       channel: channel,
-      value: value
+      value: value,
+      getValue: 1
     };
 
     var execOptions = self._getPubSubExecOptions();

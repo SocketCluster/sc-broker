@@ -2,12 +2,14 @@
 
 import SCBroker from '../../scbroker';
 import scErrors from 'sc-errors';
+import addMiddleware from './middleware';
 
 class BrokerControllerStub extends SCBroker {
   run() {
     var self = this;
 
     console.log('Start broker');
+    addMiddleware(this);
 
     self.on('masterMessage', function (data, respond) {
       if (data.killBroker) {
