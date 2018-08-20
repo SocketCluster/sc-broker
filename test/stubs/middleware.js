@@ -14,7 +14,13 @@ module.exports = function (scBroker) {
       req.command.value = 'transformed test message';
     }
 
-    next();
+    if (req.channel === 'delayedChannel') {
+      setTimeout(function () {
+        next();
+      }, 500);
+    } else {
+      next();
+    }
   });
 
   // Ensure middleware can be removed
@@ -25,4 +31,4 @@ module.exports = function (scBroker) {
   scBroker.addMiddleware(scBroker.MIDDLEWARE_PUBLISH_IN, badMiddleware);
   scBroker.removeMiddleware(scBroker.MIDDLEWARE_SUBSCRIBE, badMiddleware);
   scBroker.removeMiddleware(scBroker.MIDDLEWARE_PUBLISH_IN, badMiddleware);
-}
+};

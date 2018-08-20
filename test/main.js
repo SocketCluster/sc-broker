@@ -537,7 +537,9 @@ describe('sc-broker client', function () {
   var ch1 = 'foo'
     , ch2 = 'bar'
     , badChannel = 'badChannel'
-    , silentChannel = 'silentChannel';
+    , silentChannel = 'silentChannel'
+    , delayedChannel = 'delayedChannel';
+
   describe('client#subscriptions', function () {
     it('should have no subscriptions (empty array)', function (done) {
       assert(JSON.stringify(client.subscriptions()) == JSON.stringify([]));
@@ -593,6 +595,15 @@ describe('sc-broker client', function () {
     it('can be blocked by middleware', function (done) {
       client.publish(silentChannel, ['a','b'], function (err) {
         assert(/silent channel/.test(err.message));
+        done();
+      });
+    });
+
+    it('can be delayed by middleware', function (done) {
+      var start = Date.now();
+      client.publish(delayedChannel, ['a','b'], function () {
+        var duration = Date.now() - start;
+        assert.equal(duration >= 500, true);
         done();
       });
     });
