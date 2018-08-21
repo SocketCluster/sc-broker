@@ -571,6 +571,15 @@ describe('sc-broker client', function () {
         done();
       });
     });
+
+    it('can be delayed by middleware', function (done) {
+      var start = Date.now();
+      client.subscribe(delayedChannel, function () {
+        var duration = Date.now() - start;
+        assert.equal(duration >= 500, true);
+        done();
+      });
+    });
   });
 
   describe('client#unsubscriptions', function () {

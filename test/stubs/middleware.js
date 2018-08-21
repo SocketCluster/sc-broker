@@ -4,7 +4,13 @@ module.exports = function (scBroker) {
       return next(new Error('bad channel'));
     }
 
-    next();
+    if (req.channel === 'delayedChannel') {
+      setTimeout(function () {
+        next();
+      }, 500);
+    } else {
+      next();
+    }
   });
 
   scBroker.addMiddleware(scBroker.MIDDLEWARE_PUBLISH_IN, function (req, next) {
