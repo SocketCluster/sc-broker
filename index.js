@@ -293,7 +293,7 @@ var Client = function (options) {
         self.emit('message', response.channel, response.value);
       }
     });
-  }
+  };
 
   self._curID = 1;
   self.MAX_ID = Math.pow(2, 53) - 2;
