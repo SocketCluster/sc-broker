@@ -83,8 +83,8 @@ var Server = function (options) {
 
   var formatError = function (error) {
     var err = scErrors.hydrateError(error, true);
-    if (typeof err == 'object') {
-      if (err.name == null || err.name == 'Error') {
+    if (typeof err === 'object') {
+      if (err.name == null || err.name === 'Error') {
         err.name = 'BrokerError';
       }
       err.brokerPid = self._server.pid;
@@ -98,10 +98,10 @@ var Server = function (options) {
   });
 
   self._server.on('message', function (value) {
-    if (value.type == 'error') {
+    if (value.type === 'error') {
       var err = formatError(value.data);
       self.emit('error', err);
-    } else if (value.type == 'brokerMessage') {
+    } else if (value.type === 'brokerMessage') {
       self.emit('brokerMessage', value.brokerId, value.data, function (err, data) {
         if (value.cid) {
           self._server.send({
@@ -112,7 +112,7 @@ var Server = function (options) {
           });
         }
       });
-    } else if (value.type == 'brokerResponse') {
+    } else if (value.type === 'brokerResponse') {
       var responseHandler = self._pendingResponseHandlers[value.rid];
       if (responseHandler) {
         clearTimeout(responseHandler.timeout);
@@ -120,7 +120,7 @@ var Server = function (options) {
         var properError = scErrors.hydrateError(value.error, true);
         responseHandler.callback(properError, value.data, value.brokerId);
       }
-    } else if (value.type == 'listening') {
+    } else if (value.type === 'listening') {
       self.emit('ready', value.data);
     }
   });
@@ -256,11 +256,11 @@ var Client = function (options) {
 
     self._socket.on('connect', self._connectHandler);
     self._socket.on('error', function (err) {
-      var isConnectionFailure = err.code == 'ENOENT' || err.code == 'ECONNREFUSED';
+      var isConnectionFailure = err.code === 'ENOENT' || err.code === 'ECONNREFUSED';
       var isBelowRetryThreshold = self.connectAttempts < self.connectRetryErrorThreshold;
 
       // We can tolerate a few missed reconnections without emitting a full error.
-      if (isConnectionFailure && isBelowRetryThreshold && err.address == options.socketPath) {
+      if (isConnectionFailure && isBelowRetryThreshold && err.address === options.socketPath) {
         self.emit('warning', err);
       } else {
         self.emit('error', err);
@@ -275,7 +275,7 @@ var Client = function (options) {
       if (rawError != null) {
         error = scErrors.hydrateError(rawError, true);
       }
-      if (response.type == 'response') {
+      if (response.type === 'response') {
         if (self._commandMap.hasOwnProperty(id)) {
           clearTimeout(self._commandMap[id].timeout);
           var action = response.action;
@@ -289,7 +289,7 @@ var Client = function (options) {
             callback(error);
           }
         }
-      } else if (response.type == 'message') {
+      } else if (response.type === 'message') {
         self.emit('message', response.channel, response.value);
       }
     });
@@ -348,7 +348,7 @@ var Client = function (options) {
   };
 
   self._flushPendingBuffersIfConnected = function () {
-    if (self.state == self.CONNECTED) {
+    if (self.state === self.CONNECTED) {
       self._flushPendingBuffers();
     }
   };
@@ -432,7 +432,7 @@ var Client = function (options) {
   };
 
   self._connect = function () {
-    if (self.state == self.DISCONNECTED) {
+    if (self.state === self.DISCONNECTED) {
       self.pendingReconnect = false;
       self.pendingReconnectTimeout = null;
       clearTimeout(self._reconnectTimeoutRef);
@@ -464,7 +464,7 @@ var Client = function (options) {
   };
 
   self.isConnected = function () {
-    return self.state == self.CONNECTED;
+    return self.state === self.CONNECTED;
   };
 
   self.extractKeys = function (object) {
@@ -520,7 +520,7 @@ var Client = function (options) {
   self.unsubscribe = function (channel, ackCallback) {
     // No need to unsubscribe if the server is disconnected
     // The server cleans up automatically in case of disconnection
-    if (self.isSubscribed(channel) && self.state == self.CONNECTED) {
+    if (self.isSubscribed(channel) && self.state === self.CONNECTED) {
       delete self._subscriptionMap[channel];
 
       var command = {
@@ -555,7 +555,7 @@ var Client = function (options) {
     var len = allSubs.length;
     for (var i = 0; i < len; i++) {
       var sub = allSubs[i];
-      if (self._subscriptionMap[sub] == 'subscribed') {
+      if (self._subscriptionMap[sub] === 'subscribed') {
         activeSubs.push(sub);
       }
     }
@@ -566,7 +566,7 @@ var Client = function (options) {
     if (includePending) {
       return !!self._subscriptionMap[channel];
     }
-    return self._subscriptionMap[channel] == 'subscribed';
+    return self._subscriptionMap[channel] === 'subscribed';
   };
 
   self.publish = function (channel, value, callback) {

@@ -268,7 +268,7 @@ SCBroker.prototype.removeMiddleware = function (type, middleware) {
   }
 
   this._middleware[type] = middlewareFunctions.filter(function (fn) {
-    return fn != middleware;
+    return fn !== middleware;
   });
 };
 
@@ -283,7 +283,7 @@ var actions = {
       pid: process.pid
     };
     var result = {id: command.id, type: 'response', action: 'init', value: brokerInfo};
-    if (command.secretKey == scBroker.secretKey) {
+    if (scBroker.secretKey == null || command.secretKey === scBroker.secretKey) {
       initialized[socket.id] = {};
     } else {
       var err = new BrokerError('Invalid password was supplied to the broker');
@@ -370,9 +370,9 @@ var actions = {
       }
     } catch (e) {
       var queryErrorPrefix = 'Exception at exec(): ';
-      if (typeof e == 'string') {
+      if (typeof e === 'string') {
         e = queryErrorPrefix + e;
-      } else if (typeof e.message == 'string') {
+      } else if (typeof e.message === 'string') {
         e.message = queryErrorPrefix + e.message;
       }
       ret.error = scErrors.dehydrateError(e, true);
@@ -527,7 +527,7 @@ var handleConnection = function (sock) {
   connections[sock.id] = sock;
 
   sock.on('message', function (command) {
-    if (initialized.hasOwnProperty(sock.id) || command.action == 'init') {
+    if (initialized.hasOwnProperty(sock.id) || command.action === 'init') {
       scBroker._passThroughMiddleware(command, sock, function (err) {
         try {
           if (err) {
@@ -582,7 +582,7 @@ comServer.on('listening', function () {
 
 var comServerListen = function () {
   if (SOCKET_PATH) {
-    if (process.platform != 'win32' && fs.existsSync(SOCKET_PATH)) {
+    if (process.platform !== 'win32' && fs.existsSync(SOCKET_PATH)) {
       fs.unlinkSync(SOCKET_PATH)
     }
     comServer.listen(SOCKET_PATH);
@@ -593,7 +593,7 @@ var comServerListen = function () {
 
 process.on('message', function (m) {
   if (m) {
-    if (m.type == 'masterMessage') {
+    if (m.type === 'masterMessage') {
       if (scBroker) {
         scBroker.emit('masterMessage', m.data, function (err, data) {
           if (m.cid) {
@@ -612,7 +612,7 @@ process.on('message', function (m) {
         var err = new BrokerError(errorMessage);
         sendErrorToMaster(err);
       }
-    } else if (m.type == 'masterResponse') {
+    } else if (m.type === 'masterResponse') {
       handleMasterResponse(m);
     }
   }

@@ -10,10 +10,10 @@ var conf = {
   }
 };
 
-if (process.env.TEST_TYPE == 'es6') {
-  conf.brokerControllerPath =  __dirname + '/stubs/broker-controller-stub.mjs';
+if (process.env.TEST_TYPE === 'es6') {
+  conf.brokerControllerPath = __dirname + '/stubs/broker-controller-stub.mjs';
 } else {
-  conf.brokerControllerPath =  __dirname + '/stubs/broker-controller-stub.js';
+  conf.brokerControllerPath = __dirname + '/stubs/broker-controller-stub.js';
 }
 
 var server;
@@ -65,7 +65,7 @@ describe('sc-broker failure handling and recovery', function () {
     };
 
     var handleMessage = function (channel, data) {
-      if (channel == 'foo') {
+      if (channel === 'foo') {
         receivedCount++;
 
         if (receivedCount >= pubTargetNum) {
@@ -94,7 +94,7 @@ describe('sc-broker failure handling and recovery', function () {
           singlePublish(pubCount);
           pubCount++;
           // Kill the server at 30% of the way.
-          if (pubCount == Math.round(pubTargetNum * 0.3)) {
+          if (pubCount === Math.round(pubTargetNum * 0.3)) {
             server.sendToBroker({killBroker: true});
           }
         } else {

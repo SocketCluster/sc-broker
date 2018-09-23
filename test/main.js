@@ -11,10 +11,10 @@ var conf = {
   }
 };
 
-if (process.env.TEST_TYPE == 'es6') {
-  conf.brokerControllerPath =  __dirname + '/stubs/broker-controller-stub.mjs';
+if (process.env.TEST_TYPE === 'es6') {
+  conf.brokerControllerPath = __dirname + '/stubs/broker-controller-stub.mjs';
 } else {
-  conf.brokerControllerPath =  __dirname + '/stubs/broker-controller-stub.js';
+  conf.brokerControllerPath = __dirname + '/stubs/broker-controller-stub.js';
 }
 
 var server;
@@ -299,7 +299,7 @@ describe('sc-broker client', function () {
               four: 4,
               five: 5
             };
-            assert(JSON.stringify(value) == JSON.stringify(expected));
+            assert(JSON.stringify(value) === JSON.stringify(expected));
             done();
           });
         });
@@ -310,7 +310,7 @@ describe('sc-broker client', function () {
       client.set(path6, val6, function (err) {
         client.removeRange(path6, fromIndex, toIndex, function (err, value) {
           client.get(path6, function (err, value) {
-            assert(JSON.stringify(value) == JSON.stringify(expected1));
+            assert(JSON.stringify(value) === JSON.stringify(expected1));
             done();
           });
         });
@@ -328,7 +328,7 @@ describe('sc-broker client', function () {
           var expected = {
             four: val1
           };
-          assert(JSON.stringify(value) == JSON.stringify(expected));
+          assert(JSON.stringify(value) === JSON.stringify(expected));
           done();
         });
       });
@@ -351,7 +351,7 @@ describe('sc-broker client', function () {
           x: 1,
           y: 2
         };
-        assert(JSON.stringify(value) == JSON.stringify(expected));
+        assert(JSON.stringify(value) === JSON.stringify(expected));
         done();
       });
     });
@@ -367,7 +367,7 @@ describe('sc-broker client', function () {
       client.set(path7, arr, function (err) {
         client.getRange(path7, 2, 5, function (err, value) {
           var expected = [2, 3, 4];
-          assert(JSON.stringify(value) == JSON.stringify(expected));
+          assert(JSON.stringify(value) === JSON.stringify(expected));
           done();
         });
       });
@@ -378,7 +378,7 @@ describe('sc-broker client', function () {
 
         client.getRange(path7, 4, function (err, value) {
           var expected = [4, 5, 6, 7];
-          assert(JSON.stringify(value) == JSON.stringify(expected));
+          assert(JSON.stringify(value) === JSON.stringify(expected));
           done();
         });
       });
@@ -389,7 +389,7 @@ describe('sc-broker client', function () {
 
         client.getRange(path7, 0, 5, function (err, value) {
           var expected = [0, 1, 2, 3, 4];
-          assert(JSON.stringify(value) == JSON.stringify(expected));
+          assert(JSON.stringify(value) === JSON.stringify(expected));
           done();
         });
       });
@@ -399,7 +399,7 @@ describe('sc-broker client', function () {
       client.set(path7, arr, function (err) {
         client.getRange(path7, 4, 15, function (err, value) {
           var expected = [4, 5, 6, 7];
-          assert(JSON.stringify(value) == JSON.stringify(expected));
+          assert(JSON.stringify(value) === JSON.stringify(expected));
           done();
         });
       });
@@ -411,7 +411,7 @@ describe('sc-broker client', function () {
           var expected = {
             green: 2
           };
-          assert(JSON.stringify(value) == JSON.stringify(expected));
+          assert(JSON.stringify(value) === JSON.stringify(expected));
           done();
         });
       });
@@ -424,7 +424,7 @@ describe('sc-broker client', function () {
           yellow: 4,
           orange: 5
         };
-        assert(JSON.stringify(value) == JSON.stringify(expected));
+        assert(JSON.stringify(value) === JSON.stringify(expected));
         done();
       });
     });
@@ -436,7 +436,7 @@ describe('sc-broker client', function () {
             green: 2,
             blue: 3
           };
-          assert(JSON.stringify(value) == JSON.stringify(expected));
+          assert(JSON.stringify(value) === JSON.stringify(expected));
           done();
         });
       });
@@ -459,7 +459,7 @@ describe('sc-broker client', function () {
         client.splice(['levelA1', 'levelA2'], spliceOptions, function (err) {
           client.get(['levelA1', 'levelA2'], function (err, value) {
             var expected = ['a', 'b', 'c2', 'd2', 'e'];
-            assert(JSON.stringify(value) == JSON.stringify(expected));
+            assert(JSON.stringify(value) === JSON.stringify(expected));
             done();
           });
         });
@@ -474,7 +474,7 @@ describe('sc-broker client', function () {
         client.splice(['levelB1', 'levelB2'], spliceOptions, function (err) {
           client.get(['levelB1', 'levelB2'], function (err, value) {
             var expected = ['a', 'b'];
-            assert(JSON.stringify(value) == JSON.stringify(expected));
+            assert(JSON.stringify(value) === JSON.stringify(expected));
             done();
           });
         });
@@ -489,7 +489,7 @@ describe('sc-broker client', function () {
         client.splice(['levelC1', 'levelC2'], spliceOptions, function (err) {
           client.get(['levelC1', 'levelC2'], function (err, value) {
             var expected = ['d', 'e'];
-            assert(JSON.stringify(value) == JSON.stringify(expected));
+            assert(JSON.stringify(value) === JSON.stringify(expected));
             done();
           });
         });
@@ -504,7 +504,7 @@ describe('sc-broker client', function () {
         client.splice(['levelD1', 'levelD2'], spliceOptions, function (err) {
           client.get(['levelD1', 'levelD2'], function (err, value) {
             var expected = ['a', 'b', 'c', 'd', 'e'];
-            assert(JSON.stringify(value) == JSON.stringify(expected));
+            assert(JSON.stringify(value) === JSON.stringify(expected));
             done();
           });
         });
@@ -521,12 +521,12 @@ describe('sc-broker client', function () {
         client.splice(['levelE1', 'levelE2'], spliceOptions, function (err) {
           client.get(['levelE1', 'levelE2'], function (err, value) {
             var expected = ['a', 'b', {key1: 1, key2: {nestedKey1: 'hi'}}, 'c'];
-            assert(JSON.stringify(value) == JSON.stringify(expected));
+            assert(JSON.stringify(value) === JSON.stringify(expected));
           });
 
           client.get(['levelE1', 'levelE2', 2, 'key2'], function (err, value) {
             var expected = {nestedKey1: 'hi'};
-            assert(JSON.stringify(value) == JSON.stringify(expected));
+            assert(JSON.stringify(value) === JSON.stringify(expected));
             done();
           });
         });
@@ -542,7 +542,7 @@ describe('sc-broker client', function () {
 
   describe('client#subscriptions', function () {
     it('should have no subscriptions (empty array)', function (done) {
-      assert(JSON.stringify(client.subscriptions()) == JSON.stringify([]));
+      assert(JSON.stringify(client.subscriptions()) === JSON.stringify([]));
       done();
     });
 
@@ -558,7 +558,7 @@ describe('sc-broker client', function () {
     it('should subscribe channel ' + ch1, function (done) {
       client.subscribe(ch1, function (err) {
         assert.equal(client.isSubscribed(ch1), true);
-        assert(JSON.stringify(client.subscriptions()) == JSON.stringify([ch1]));
+        assert(JSON.stringify(client.subscriptions()) === JSON.stringify([ch1]));
         done();
       });
     });
@@ -636,7 +636,7 @@ describe('sc-broker client', function () {
             var expected = {
               expire: {}
             };
-            assert(JSON.stringify(value) == JSON.stringify(expected));
+            assert(JSON.stringify(value) === JSON.stringify(expected));
             done();
           });
         }, etsec * 1000 * 2.1);
@@ -688,7 +688,7 @@ describe('sc-broker client', function () {
             var expected = {
               '8a788b9c-c50e-0b3f-bd47-ec0c63327bf1': [6, 7, 8]
             };
-            assert(JSON.stringify(value) == JSON.stringify(expected));
+            assert(JSON.stringify(value) === JSON.stringify(expected));
             done();
           });
         });
