@@ -198,16 +198,33 @@ SCBroker.prototype._init = function (options) {
 
 SCBroker.prototype.run = function () {};
 
-SCBroker.prototype.sendToMaster = function (data, callback) {
+SCBroker.prototype.sendDataToMaster = function (data) {
   var messagePacket = {
     type: 'brokerMessage',
     brokerId: this.id,
     data: data
   };
-  if (callback) {
-    messagePacket.cid = createIPCResponseHandler(this.ipcAckTimeout, callback);
-  }
   process.send(messagePacket);
+};
+
+SCBroker.prototype.sendRequestToMaster = function (data) {
+  var self = this;
+
+  return new Promise(function (resolve, reject) {
+    var messagePacket = {
+      type: 'brokerMessage',
+      brokerId: self.id,
+      data: data
+    };
+    messagePacket.cid = createIPCResponseHandler(self.ipcAckTimeout, function (err, result) {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(result);
+    });
+    process.send(messagePacket);
+  });
 };
 
 SCBroker.prototype.exec = function (query, baseKey) {
@@ -412,7 +429,7 @@ var actions = {
   },
 
   splice: function (command, socket) {
-    var args = [command.key, command.index, command.count];
+    var args = [command.key, command.fromIndex, command.count];
     if (command.items) {
       args = args.concat(command.items);
     }
@@ -595,8 +612,8 @@ process.on('message', function (m) {
   if (m) {
     if (m.type === 'masterMessage') {
       if (scBroker) {
-        scBroker.emit('masterMessage', m.data, function (err, data) {
-          if (m.cid) {
+        if (m.cid) {
+          scBroker.emit('masterRequest', m.data, function (err, data) {
             process.send({
               type: 'brokerResponse',
               brokerId: scBroker.id,
@@ -604,8 +621,10 @@ process.on('message', function (m) {
               data: data,
               rid: m.cid
             });
-          }
-        });
+          });
+        } else {
+          scBroker.emit('masterData', m.data);
+        }
       } else {
         var errorMessage = 'Cannot send message to broker with id ' + BROKER_ID +
         ' because the broker was not instantiated';

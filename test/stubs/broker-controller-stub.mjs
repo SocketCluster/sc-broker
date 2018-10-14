@@ -11,48 +11,48 @@ class BrokerControllerStub extends SCBroker {
     console.log('Start broker');
     addMiddleware(this);
 
-    self.on('masterMessage', function (data, respond) {
+    self.on('masterRequest', function (data, respond) {
       if (data.killBroker) {
         console.log('Broker is shutting down');
         process.exit();
       } else {
         if (data.brokerTest) {
           if (data.brokerTest === 'test1') {
-            self.sendToMaster({
+            self.sendRequestToMaster({
               brokerSubject: 'there'
             }, function (err, data) {
-              self.sendToMaster({
+              self.sendDataToMaster({
                 brokerTestResult: 'test1',
                 err: scErrors.dehydrateError(err, true),
                 data: data
               });
             });
           } else if (data.brokerTest === 'test2') {
-            self.sendToMaster({
+            self.sendRequestToMaster({
               sendBackError: true
             }, function (err, data) {
-              self.sendToMaster({
+              self.sendDataToMaster({
                 brokerTestResult: 'test2',
                 err: scErrors.dehydrateError(err, true),
                 data: data
               });
             });
           } else if (data.brokerTest === 'test3') {
-            self.sendToMaster({
+            self.sendRequestToMaster({
               doNothing: true
             }, function (err, data) {
-              self.sendToMaster({
+              self.sendDataToMaster({
                 brokerTestResult: 'test3',
                 err: scErrors.dehydrateError(err, true),
                 data: data
               });
             });
           } else if (data.brokerTest === 'test4') {
-            self.sendToMaster({
+            self.sendDataToMaster({
               doNothing: true
             });
             setTimeout(function () {
-              self.sendToMaster({
+              self.sendDataToMaster({
                 brokerTestResult: 'test4',
                 err: null,
                 data: null

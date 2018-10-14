@@ -24,23 +24,23 @@ describe('sc-broker failure handling and recovery', function () {
 
   before('run the server before start', function (done) {
     // Set up the server to auto-relaunch on crash
-    var launchServer = function () {
+    var launchServer = () => {
       if (testFinished) {
         return;
       }
       server = scBroker.createServer(conf);
-      server.on('error', function (err) {
-        // console.error('server error:', err);
+      server.on('error', (err) => {
+        console.error('server error:', err);
       });
       server.on('exit', launchServer);
     };
     launchServer();
 
     client = scBroker.createClient(conf);
-    client.on('error', function (err) {
-      // console.error('client error', err);
+    client.on('error', (err) => {
+      console.error('client error', err);
     });
-    server.on('ready', function () {
+    server.on('ready', () => {
       done();
     });
   });
@@ -59,12 +59,12 @@ describe('sc-broker failure handling and recovery', function () {
     var pubCount = 0;
     var receivedCount = 0;
 
-    var finish = function () {
+    var finish = () => {
       assert.equal(receivedCount, pubCount);
       done();
     };
 
-    var handleMessage = function (channel, data) {
+    var handleMessage = (channel, data) => {
       if (channel === 'foo') {
         receivedCount++;
 
@@ -76,32 +76,31 @@ describe('sc-broker failure handling and recovery', function () {
     };
 
     client.on('message', handleMessage);
-    client.subscribe('foo', function (err) {
-      if (err) {
-        throw err;
-      }
-
-      var doPublish = function () {
+    client.subscribe('foo')
+    .then(() => {
+      var doPublish = () => {
         if (pubCount < pubTargetNum) {
-          var singlePublish = function (pCount) {
-            client.publish('foo', 'hello ' + pCount, function (err) {
+          var singlePublish = (pCount) => {
+            client.publish('foo', 'hello ' + pCount)
+            .catch((err) => {
               // If error, retry.
-              if (err) {
-                setTimeout(singlePublish.bind(this, pCount), 100);
-              }
+              setTimeout(singlePublish.bind(this, pCount), 100);
             });
           };
           singlePublish(pubCount);
           pubCount++;
           // Kill the server at 30% of the way.
           if (pubCount === Math.round(pubTargetNum * 0.3)) {
-            server.sendToBroker({killBroker: true});
+            server.sendDataToBroker({killBroker: true});
           }
         } else {
           clearInterval(pubIntervalHandle);
         }
       };
       pubIntervalHandle = setInterval(doPublish, pubInterval);
+    })
+    .catch((err) => {
+      throw err;
     });
   });
 });

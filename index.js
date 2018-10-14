@@ -102,23 +102,25 @@ var Server = function (options) {
       var err = formatError(value.data);
       self.emit('error', err);
     } else if (value.type === 'brokerMessage') {
-      self.emit('brokerMessage', value.brokerId, value.data, function (err, data) {
-        if (value.cid) {
+      if (value.cid) {
+        self.emit('brokerRequest', value.brokerId, value.data, function (err, data) {
           self._server.send({
             type: 'masterResponse',
             error: scErrors.dehydrateError(err, true),
             data: data,
             rid: value.cid
           });
-        }
-      });
+        });
+      } else {
+        self.emit('brokerData', value.brokerId, value.data);
+      }
     } else if (value.type === 'brokerResponse') {
       var responseHandler = self._pendingResponseHandlers[value.rid];
       if (responseHandler) {
         clearTimeout(responseHandler.timeout);
         delete self._pendingResponseHandlers[value.rid];
         var properError = scErrors.hydrateError(value.error, true);
-        responseHandler.callback(properError, value.data, value.brokerId);
+        responseHandler.callback(properError, value.data);
       }
     } else if (value.type === 'listening') {
       self.emit('ready', value.data);
@@ -156,15 +158,29 @@ var Server = function (options) {
     return cid;
   };
 
-  self.sendToBroker = function (data, callback) {
+  self.sendDataToBroker = function (data) {
     var messagePacket = {
       type: 'masterMessage',
       data: data
     };
-    if (callback) {
-      messagePacket.cid = self._createIPCResponseHandler(callback);
-    }
     self._server.send(messagePacket);
+  };
+
+  self.sendRequestToBroker = function (data) {
+    return new Promise(function (resolve, reject) {
+      var messagePacket = {
+        type: 'masterMessage',
+        data: data
+      };
+      messagePacket.cid = self._createIPCResponseHandler(function (err, result) {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(result);
+      });
+      self._server.send(messagePacket);
+    });
   };
 };
 
@@ -392,23 +408,30 @@ var Client = function (options) {
     self._pendingBuffer.push(commandData);
   };
 
+  self._processCommand = function (command, options) {
+    return new Promise(function (resolve, reject) {
+      self._connect();
+      self._bufferCommand(command, function (err, result) {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(result);
+      }, options);
+      self._flushPendingBuffersIfConnected();
+    });
+  };
+
   // Recovers subscriptions after Broker server crash
   self._resubscribeAll = function () {
-    var hasFailed = false;
-    var handleResubscribe = function (channel, err) {
-      if (err) {
-        if (!hasFailed) {
-          hasFailed = true;
-          self.emit('error', new BrokerError('Failed to resubscribe to Broker server channels'));
-        }
-      }
-    };
-    var channels = self._subscriptionMap;
-    for (var i in channels) {
-      if (channels.hasOwnProperty(i)) {
-        self.subscribe(i, handleResubscribe.bind(self, i), true);
-      }
-    }
+    var subscribePromises = Object.keys(self._subscriptionMap || {}).map(function (channel) {
+      return self.subscribe(channel, true);
+    });
+    Promise.all(subscribePromises)
+    .catch(function (err) {
+      var errorMessage = err.message || err;
+      self.emit('error', new BrokerError('Failed to resubscribe to broker channels - ' + errorMessage));
+    });
   };
 
   self._connectHandler = function () {
@@ -489,61 +512,65 @@ var Client = function (options) {
     return execOptions;
   };
 
-  self.subscribe = function (channel, ackCallback, force) {
-    if (!force && self.isSubscribed(channel)) {
-      ackCallback && ackCallback();
-    } else {
-      self._subscriptionMap[channel] = 'pending';
+  self.subscribe = function (channel, force) {
+    return new Promise(function (resolve, reject) {
+      if (!force && self.isSubscribed(channel)) {
+        resolve();
+      } else {
+        self._subscriptionMap[channel] = 'pending';
 
-      var command = {
-        channel: channel,
-        action: 'subscribe'
-      };
-      var callback = function (err) {
-        if (err) {
-          ackCallback && ackCallback(err);
-          self.emit('subscribeFail', err, channel);
-        } else {
+        var command = {
+          channel: channel,
+          action: 'subscribe'
+        };
+        var callback = function (err) {
+          if (err) {
+            reject(err);
+            self.emit('subscribeFail', err, channel);
+            return;
+          }
           self._subscriptionMap[channel] = 'subscribed';
-          ackCallback && ackCallback();
+          resolve();
           self.emit('subscribe', channel);
-        }
-      };
-      var execOptions = self._getPubSubExecOptions();
+        };
+        var execOptions = self._getPubSubExecOptions();
 
-      self._connect();
-      self._bufferSubscribeCommand(command, callback, execOptions);
-      self._flushPendingBuffersIfConnected();
-    }
+        self._connect();
+        self._bufferSubscribeCommand(command, callback, execOptions);
+        self._flushPendingBuffersIfConnected();
+      }
+    });
   };
 
-  self.unsubscribe = function (channel, ackCallback) {
-    // No need to unsubscribe if the server is disconnected
-    // The server cleans up automatically in case of disconnection
-    if (self.isSubscribed(channel) && self.state === self.CONNECTED) {
-      delete self._subscriptionMap[channel];
+  self.unsubscribe = function (channel) {
+    return new Promise(function (resolve, reject) {
+      // No need to unsubscribe if the server is disconnected
+      // The server cleans up automatically in case of disconnection
+      if (self.isSubscribed(channel) && self.state === self.CONNECTED) {
+        delete self._subscriptionMap[channel];
 
-      var command = {
-        action: 'unsubscribe',
-        channel: channel
-      };
+        var command = {
+          action: 'unsubscribe',
+          channel: channel
+        };
 
-      var cb = function (err) {
-        // Unsubscribe can never fail because TCP guarantees
-        // delivery for the life of the connection. If the
-        // connection fails then all subscriptions
-        // will be cleared automatically anyway.
-        ackCallback && ackCallback();
-        self.emit('unsubscribe');
-      };
+        var cb = function (err) {
+          // Unsubscribe can never fail because TCP guarantees
+          // delivery for the life of the connection. If the
+          // connection fails then all subscriptions
+          // will be cleared automatically anyway.
+          resolve();
+          self.emit('unsubscribe');
+        };
 
-      var execOptions = self._getPubSubExecOptions();
-      self._bufferCommand(command, cb, execOptions);
-      self._flushPendingBuffers();
-    } else {
-      delete self._subscriptionMap[channel];
-      ackCallback && ackCallback();
-    }
+        var execOptions = self._getPubSubExecOptions();
+        self._bufferCommand(command, cb, execOptions);
+        self._flushPendingBuffers();
+      } else {
+        delete self._subscriptionMap[channel];
+        resolve();
+      }
+    });
   };
 
   self.subscriptions = function (includePending) {
@@ -569,7 +596,7 @@ var Client = function (options) {
     return self._subscriptionMap[channel] === 'subscribed';
   };
 
-  self.publish = function (channel, value, callback) {
+  self.publish = function (channel, value) {
     var command = {
       action: 'publish',
       channel: channel,
@@ -578,208 +605,161 @@ var Client = function (options) {
     };
 
     var execOptions = self._getPubSubExecOptions();
-    self._connect();
-    self._bufferCommand(command, callback, execOptions);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command, execOptions);
   };
 
-  self.send = function (data, callback) {
+  self.send = function (data) {
     var command = {
       action: 'send',
       value: data
     };
 
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
   /*
-    set(key, value,[ options, callback])
+    set(key, value,[ options])
+    Returns a Promise.
   */
-  self.set = function () {
-    var key = arguments[0];
-    var value = arguments[1];
-    var options = {
-      getValue: 0
-    };
-    var callback;
-
-    if (arguments[2] instanceof Function) {
-      callback = arguments[2];
-    } else {
-      options.getValue = arguments[2];
-      callback = arguments[3];
-    }
-
+  self.set = function (key, value, options) {
     var command = {
       action: 'set',
       key: key,
       value: value
     };
 
-    if (options.getValue) {
+    if (options && options.getValue) {
       command.getValue = 1;
     }
 
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
   /*
-    expire(keys, seconds,[ callback])
+    expire(keys, seconds)
+    Returns a Promise.
   */
-  self.expire = function (keys, seconds, callback) {
+  self.expire = function (keys, seconds) {
     var command = {
       action: 'expire',
       keys: keys,
       value: seconds
     };
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
   /*
-    unexpire(keys,[ callback])
+    unexpire(keys)
+    Returns a Promise.
   */
-  self.unexpire = function (keys, callback) {
+  self.unexpire = function (keys) {
     var command = {
       action: 'unexpire',
       keys: keys
     };
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
   /*
-    getExpiry(key,[ callback])
+    getExpiry(key)
+    Returns a Promise.
   */
-  self.getExpiry = function (key, callback) {
+  self.getExpiry = function (key) {
     var command = {
       action: 'getExpiry',
       key: key
     };
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
   /*
-    add(key, value,[ options, callback])
+    add(key, value)
+    Returns a Promise.
   */
-  self.add = function () {
-    var key = arguments[0];
-    var value = arguments[1];
-    var callback;
-    if (arguments[2] instanceof Function) {
-      callback = arguments[2];
-    } else {
-      callback = arguments[3];
-    }
-
+  self.add = function (key, value) {
     var command = {
       action: 'add',
       key: key,
       value: value
     };
 
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
   /*
-    concat(key, value,[ options, callback])
+    concat(key, value,[ options])
+    Returns a Promise.
   */
-  self.concat = function () {
-    var key = arguments[0];
-    var value = arguments[1];
-    var options = {
-      getValue: 0
-    };
-    var callback;
-    if (arguments[2] instanceof Function) {
-      callback = arguments[2];
-    } else {
-      options.getValue = arguments[2];
-      callback = arguments[3];
-    }
-
+  self.concat = function (key, value, options) {
     var command = {
       action: 'concat',
       key: key,
       value: value
     };
 
-    if (options.getValue) {
+    if (options && options.getValue) {
       command.getValue = 1;
     }
 
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
-  self.get = function (key, callback) {
+  /*
+    get(key)
+    Returns a Promise.
+  */
+  self.get = function (key) {
     var command = {
       action: 'get',
       key: key
     };
 
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
   /*
-    getRange(key, fromIndex,[ toIndex,] callback)
+    getRange(key, options)
+    Returns a Promise.
   */
-  self.getRange = function () {
-    var key = arguments[0];
-    var fromIndex = arguments[1];
-    var toIndex = null;
-    var callback;
-    if (arguments[2] instanceof Function) {
-      callback = arguments[2];
-    } else {
-      toIndex = arguments[2];
-      callback = arguments[3];
-    }
-
+  self.getRange = function (key, options) {
     var command = {
       action: 'getRange',
-      key: key,
-      fromIndex: fromIndex
+      key: key
     };
 
-    if (toIndex) {
-      command.toIndex = toIndex;
+    if (options) {
+      if (options.fromIndex != null) {
+        command.fromIndex = options.fromIndex;
+      }
+      if (options.toIndex != null) {
+        command.toIndex = options.toIndex;
+      }
     }
 
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
-  self.getAll = function (callback) {
+  /*
+    getAll()
+    Returns a Promise.
+  */
+  self.getAll = function () {
     var command = {
       action: 'getAll'
     };
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
-  self.count = function (key, callback) {
+  /*
+    count(key)
+    Returns a Promise.
+  */
+  self.count = function (key) {
     var command = {
       action: 'count',
       key: key
     };
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
   self._stringifyQuery = function (query, data) {
@@ -788,14 +768,12 @@ var Client = function (options) {
     var validVarNameRegex = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
     var headerString = '';
 
-    for (var i in data) {
-      if (data.hasOwnProperty(i)) {
-        if (!validVarNameRegex.test(i)) {
-          throw new BrokerError("The variable name '" + i + "' is invalid");
-        }
-        headerString += 'var ' + i + '=' + JSON.stringify(data[i]) + ';';
+    Object.keys(data || {}).forEach(function (i) {
+      if (!validVarNameRegex.test(i)) {
+        throw new BrokerError("The variable name '" + i + "' is invalid");
       }
-    }
+      headerString += 'var ' + i + '=' + JSON.stringify(data[i]) + ';';
+    });
 
     query = query.replace(/^(function *[(][^)]*[)] *{)/, function (match) {
       return match + headerString;
@@ -805,296 +783,218 @@ var Client = function (options) {
   };
 
   /*
-    registerDeathQuery(query,[ data, callback])
+    registerDeathQuery(query,[ data])
+    Returns a Promise.
   */
-  self.registerDeathQuery = function () {
-    var data;
-    var callback = null;
-
-    if (arguments[1] instanceof Function) {
-      data = arguments[0].data || {};
-      callback = arguments[1];
-    } else if (arguments[1]) {
-      data = arguments[1];
-      callback = arguments[2];
-    } else {
-      data = arguments[0].data || {};
+  self.registerDeathQuery = function (query, data) {
+    if (!data) {
+      data = query.data || {};
     }
 
-    var query = self._stringifyQuery(arguments[0], data);
+    query = self._stringifyQuery(query, data);
 
-    if (query) {
-      var command = {
-        action: 'registerDeathQuery',
-        value: query
-      };
-      self._connect();
-      self._bufferCommand(command, callback);
-      self._flushPendingBuffersIfConnected();
-    } else {
-      callback && callback('Invalid query format - Query must be a string or a function');
-    }
-  };
-
-  /*
-    exec(query,[ options, callback])
-  */
-  self.exec = function () {
-    var data;
-    var baseKey = null;
-    var noAck = null;
-    var callback = null;
-
-    if (arguments[0].data) {
-      data = arguments[0].data;
-    } else {
-      data = {};
-    }
-
-    if (arguments[1] instanceof Function) {
-      callback = arguments[1];
-    } else if (arguments[1]) {
-      baseKey = arguments[1].baseKey;
-      noAck = arguments[1].noAck;
-      if (arguments[1].data) {
-        data = arguments[1].data;
-      }
-      callback = arguments[2];
-    }
-
-    var query = self._stringifyQuery(arguments[0], data);
-
-    if (query) {
-      var command = {
-        action: 'exec',
-        value: query
-      };
-
-      if (baseKey) {
-        command.baseKey = baseKey;
-      }
-      if (noAck) {
-        command.noAck = noAck;
-      }
-
-      self._connect();
-      self._bufferCommand(command, callback);
-      self._flushPendingBuffersIfConnected();
-    } else {
-      callback && callback('Invalid query format - Query must be a string or a function');
-    }
-  };
-
-  /*
-    query(query,[ data, callback])
-  */
-  self.query = function () {
-    if (arguments[1] && !(arguments[1] instanceof Function)) {
-      var options = {data: arguments[1]};
-      self.exec(arguments[0], options, arguments[2]);
-    } else {
-      self.exec.apply(self, arguments);
-    }
-  };
-
-  /*
-    remove(key,[ options, callback])
-  */
-  self.remove = function () {
-    var key = arguments[0];
-    var options = {
-      getValue: 0
+    var command = {
+      action: 'registerDeathQuery',
+      value: query
     };
-    var callback;
-    if (arguments[1] instanceof Function) {
-      callback = arguments[1];
+    return self._processCommand(command);
+  };
+
+  /*
+    exec(query,[ options])
+    Returns a Promise.
+  */
+  self.exec = function (query, options) {
+    options = options || {};
+    var data;
+
+    if (options.data) {
+      data = options.data;
     } else {
-      if (arguments[1] instanceof Object) {
-        options = arguments[1];
-      } else {
-        options.getValue = arguments[1];
-      }
-      callback = arguments[2];
+      data = query.data || {};
     }
 
+    query = self._stringifyQuery(query, data);
+
+    var command = {
+      action: 'exec',
+      value: query
+    };
+
+    if (options.baseKey) {
+      command.baseKey = options.baseKey;
+    }
+    if (options.noAck) {
+      command.noAck = options.noAck;
+    }
+
+    return self._processCommand(command);
+  };
+
+  /*
+    query(query,[ data])
+    Returns a Promise.
+  */
+  self.query = function (query, data) {
+    var options = {
+      data: data
+    };
+    return self.exec(query, options);
+  };
+
+  /*
+    remove(key,[ options])
+    Returns a Promise.
+  */
+  self.remove = function (key, options) {
     var command = {
       action: 'remove',
       key: key
     };
 
-    if (options.getValue) {
-      command.getValue = 1;
-    }
-    if (options.noAck) {
-      command.noAck = 1;
+    if (options) {
+      if (options.getValue) {
+        command.getValue = 1;
+      }
+      if (options.noAck) {
+        command.noAck = 1;
+      }
     }
 
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
   /*
-    removeRange(key, fromIndex,[ options, callback])
+    removeRange(key,[ options])
+    Returns a Promise.
   */
-  self.removeRange = function () {
-    var key = arguments[0];
-    var fromIndex = arguments[1];
-    var options = {
-      toIndex: null,
-      getValue: 0
-    };
-    var callback;
-    if (arguments[2] instanceof Function) {
-      callback = arguments[2];
-    } else if (arguments[3] instanceof Function) {
-      if (arguments[2] instanceof Object) {
-        options = arguments[2];
-      } else {
-        options.toIndex = arguments[2];
-      }
-      callback = arguments[3];
-    } else {
-      options.toIndex = arguments[2];
-      options.getValue = arguments[3];
-      callback = arguments[4];
-    }
-
+  self.removeRange = function (key, options) {
     var command = {
       action: 'removeRange',
-      fromIndex: fromIndex,
       key: key
     };
 
-    if (options.toIndex) {
-      command.toIndex = options.toIndex;
-    }
-    if (options.getValue) {
-      command.getValue = 1;
-    }
-    if (options.noAck) {
-      command.noAck = 1;
+    if (options) {
+      if (options.fromIndex != null) {
+        command.fromIndex = options.fromIndex;
+      }
+      if (options.toIndex != null) {
+        command.toIndex = options.toIndex;
+      }
+      if (options.getValue) {
+        command.getValue = 1;
+      }
+      if (options.noAck) {
+        command.noAck = 1;
+      }
     }
 
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
-  };
-
-  self.removeAll = function (callback) {
-    var command = {
-      action: 'removeAll'
-    };
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
   /*
-    splice(key,[ options, callback])
+    removeAll()
+    Returns a Promise.
+  */
+  self.removeAll = function () {
+    var command = {
+      action: 'removeAll'
+    };
+    return self._processCommand(command);
+  };
+
+  /*
+    splice(key,[ options])
     The following options are supported:
-    - fromIndex
+    - fromIndex // Start index
     - count // Number of items to delete
     - items // Must be an Array of items to insert as part of splice
+    Returns a Promise.
   */
-  self.splice = function () {
-    var key = arguments[0];
-    var index = arguments[1];
-    var options = {};
-    var callback;
-
-    if (arguments[2] instanceof Function) {
-      options = arguments[1];
-      callback = arguments[2];
-    } else if (arguments[1] instanceof Function) {
-      callback = arguments[1];
-    } else if (arguments[1]) {
-      options = arguments[1];
-    }
-
+  self.splice = function (key, options) {
     var command = {
       action: 'splice',
       key: key
     };
 
-    if (options.index != null) {
-      command.index = options.index;
-    }
-    if (options.count != null) {
-      command.count = options.count;
-    }
-    if (options.items != null) {
-      command.items = options.items;
-    }
-    if (options.getValue) {
-      command.getValue = 1;
-    }
-    if (options.noAck) {
-      command.noAck = 1;
+    if (options) {
+      if (options.fromIndex != null) {
+        command.fromIndex = options.fromIndex;
+      }
+      if (options.count != null) {
+        command.count = options.count;
+      }
+      if (options.items != null) {
+        command.items = options.items;
+      }
+      if (options.getValue) {
+        command.getValue = 1;
+      }
+      if (options.noAck) {
+        command.noAck = 1;
+      }
     }
 
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
   /*
-    pop(key,[ options, callback])
+    pop(key,[ options])
+    Returns a Promise.
   */
-  self.pop = function () {
-    var key = arguments[0];
-    var options = {
-      getValue: 0
-    };
-    var callback;
-    if (arguments[1] instanceof Function) {
-      callback = arguments[1];
-    } else {
-      options.getValue = arguments[1];
-      callback = arguments[2];
-    }
-
+  self.pop = function (key, options) {
     var command = {
       action: 'pop',
       key: key
     };
-    if (options.getValue) {
-      command.getValue = 1;
-    }
-    if (options.noAck) {
-      command.noAck = 1;
+
+    if (options) {
+      if (options.getValue) {
+        command.getValue = 1;
+      }
+      if (options.noAck) {
+        command.noAck = 1;
+      }
     }
 
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
-  self.hasKey = function (key, callback) {
+  /*
+    hasKey(key)
+    Returns a Promise.
+  */
+  self.hasKey = function (key) {
     var command = {
       action: 'hasKey',
       key: key
     };
-    self._connect();
-    self._bufferCommand(command, callback);
-    self._flushPendingBuffersIfConnected();
+    return self._processCommand(command);
   };
 
-  self.end = function (callback) {
+  /*
+    end()
+    Returns a Promise.
+  */
+  self.end = function () {
     clearTimeout(self._reconnectTimeoutRef);
-    self.unsubscribe(null, function () {
-      if (callback) {
+    return self.unsubscribe()
+    .then(function () {
+      return new Promise(function (resolve, reject) {
         var disconnectCallback = function () {
           if (disconnectTimeout) {
             clearTimeout(disconnectTimeout);
           }
-          setTimeout(callback, 0);
+          setTimeout(function () {
+            resolve();
+          }, 0);
           self._socket.removeListener('end', disconnectCallback);
         };
 
         var disconnectTimeout = setTimeout(function () {
           self._socket.removeListener('end', disconnectCallback);
-          callback('Disconnection timed out');
+          var error = new TimeoutError('Disconnection timed out');
+          reject(error);
         }, self._timeout);
 
         if (self._socket.connected) {
@@ -1102,18 +1002,18 @@ var Client = function (options) {
         } else {
           disconnectCallback();
         }
-      }
-      var setDisconnectStatus = function () {
-        self._socket.removeListener('end', setDisconnectStatus);
-        self.state = self.DISCONNECTED;
-      };
-      if (self._socket.connected) {
-        self._socket.on('end', setDisconnectStatus);
-        self._socket.end();
-      } else {
-        self._socket.destroy();
-        self.state = self.DISCONNECTED;
-      }
+        var setDisconnectStatus = function () {
+          self._socket.removeListener('end', setDisconnectStatus);
+          self.state = self.DISCONNECTED;
+        };
+        if (self._socket.connected) {
+          self._socket.on('end', setDisconnectStatus);
+          self._socket.end();
+        } else {
+          self._socket.destroy();
+          self.state = self.DISCONNECTED;
+        }
+      });
     });
   };
 };
