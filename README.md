@@ -75,24 +75,20 @@ createServer function.
 
 The client exposes the following methods:
 (Please see the [section on keys ](https://github.com/SocketCluster/sc-broker#keys) to
-see how you can use keys in *scBroker*. Also, note that the callback argument in
-all of the following cases is optional.)
+see how you can use keys in *scBroker*.
 
 
 #### exec
 
 ```js
-exec(code,[data,] callback)
+exec(code,[ data])
 ```
 Run a special JavaScript function
 declaration (code) as a query *on the scBroker server*. This function declaration
 accepts the DataMap as a parameter.
 This is the most important function in *scBroker*, all the other functions are
 basically utility functions to make things quicker. Using exec() offers the
-most flexibility. The *callback* is in form:
-```
-callback(err, data)
-```
+most flexibility. Returns a Promise; on success resolves to the return value of the query function.
 
 **Example:**
 
@@ -107,8 +103,12 @@ queryFn.data = {
     myMessage: 'This is an important message'
 };
 
-client.exec(queryFn, function (err, data) {
+client.exec(queryFn)
+.then((data) => {
     console.log(data); // outputs {message: "This is an important message"}
+})
+.catch((err) => {
+  // ...
 });
 ```
 **Note**
@@ -128,151 +128,112 @@ input. The ```queryFn.data``` property is optional.
 #### set
 
 ```js
-set(keyChain, value, callback)
+set(keyChain, value, options)
 ```
-Set a key-value pair, when the operation has been completed, callback will be
-executed. The callback is in form:
-```js
-callback(err)
-```
+Set a key-value pair. Returns a Promise.
 
 #### add
 
 ```js
-add(keyChain, value, callback)
+add(keyChain, value)
 ```
 Append a value at the given ```keyChain```; the object at ```keyChain``` will
 be *treated as an array*. If a value already exists at that ```keyChain``` and
 is not an array, this existing value will be placed inside an empty array and
-the specified value argument will be appended to that array. The callback is
-in form:
-```js
-callback(err, insertionIndex)
-```
+the specified value argument will be appended to that array. Returns a Promise.
 
 #### concat
 
 ```js
-concat(keyChain, value, callback)
+concat(keyChain, value,[ options])
 ```
 Concatenate the array or object at ```keyChain``` with the specified array or
-object (```value```). The callback is in form:
-```js
-callback(err)
-```
+object (```value```). Returns a Promise.
 
 #### remove
 
 ```js
-remove(keyChain,[getValue,] callback)
+remove(keyChain,[ options])
 ```
 Remove the value at ```keyChain```. If value is an array, it will remove the
-entire array. The optional ```getValue``` is a *boolean* which indicates
-whether or not to *return* the removed value *in the callback*. The callback
-is in form:
-```js
-callback(err, value)
-```
+entire array. The optional ```options.getValue``` is a *boolean* which indicates
+whether or not to *return* the removed value *in the Promise*. Returns a Promise.
 
 #### removeRange
 
 ```js
-removeRange(keyChain, fromIndex,[ toIndex, getValue,] callback)
+removeRange(keyChain, options)
 ```
-Remove a range of values at ```keyChain``` between ```fromIndex``` and
-```toIndex```. This function assumes that the value at ```keyChain``` is an
-object or array. The optional ```getValue``` argument specifies whether or not
-to *return* the removed section as an *argument to the callback*. The callback
-is in form:
-```js
-callback(err, value)
-```
+Remove a range of values at ```keyChain``` between ```options.fromIndex``` and
+```options.toIndex```. This function assumes that the value at ```keyChain``` is an
+object or array. The optional ```options.getValue``` argument specifies whether or not
+to *return* the removed section as an *argument to the Promise*. Returns a Promise.
 
 #### removeAll
 
 ```js
-removeAll(callback)
+removeAll()
 ```
-Clear *scBroker* *completely*. The callback is in form:
-```js
-callback(err)
-```
+Clear *scBroker* *completely*. Returns a Promise.
 
 #### splice
 
 ```js
-splice(keyChain,[ options,] callback)
+splice(keyChain,[ options])
 ```
 
 This operation is designed to work on Arrays (the keyChain argument should point to an Array).
 It is similar to JavaScript's Array.splice() function. It can be used to remove and insert elements
 within an Array.
 The options argument is an object which can have the following properties:
-- index // The index at which to start inserting/deleting
+- fromIndex // The index at which to start inserting/deleting
 - count // The number of items to delete starting from index
 - items // An Array of items to insert at index
 
-Callback form:
-
-```js
-callback(err, value)
-```
+Returns a Promise.
 
 #### pop
 
 ```js
-pop(keyChain,[getValue,] callback)
+pop(keyChain,[ options])
 ```
 
 Remove the *last numerically-indexed entry* at ```keyChain```. The optional
-``getValue`` is a *boolean* which indicates whether or not to *return* the
-removed value in the callback. The callback is in form:
-```js
-callback(err, value)
-```
+```options.getValue``` is a *boolean* which indicates whether or not to *return* the
+removed value in the Promise. Returns a Promise.
 
 #### get
 
 ```js
-get(keyChain, callback)
+get(keyChain)
 ```
-Get the value at ```keyChain```. The callback is in form:
-```js
-callback(err, value)
-```
+Get the value at ```keyChain```. Returns a Promise.
+
 #### getRange
 
 ```js
-getRange(keyChain, fromIndex,[ toIndex,] callback)
+getRange(keyChain,[ options])
 ```
 This function assumes that the value at ```keyChain``` is an Array or Object.
-Capture all values starting at ```fromIndex``` and finishing at ```toIndex```
-but **not including** ```toIndex```. If ```toIndex``` is not specified, all
-values from ```fromIndex``` until the end of the Array or Object will be
-included. The callback is in form:
-```js
-callback(err, value)
-```
+Capture all values starting at ```options.fromIndex``` and finishing at ```options.toIndex```
+but **not including** ```options.toIndex```. If ```options.toIndex``` is not specified, all
+values from ```options.fromIndex``` until the end of the Array or Object will be
+included. Returns a Promise.
 
 #### getAll
 
 ```js
-getAll(callback)
+getAll()
 ```
-Get all the values in *scBroker*. The callback is in form:
-```js
-callback(err, value)
-```
+Get all the values in *scBroker*. Returns a Promise.
 
 #### count
 
 ```js
-count(keyChain, callback)
+count(keyChain)
 ```
-Count the number of elements at ```keyChain```. The callback is in form:
-```js
-callback(err, value)
-```
+Count the number of elements at ```keyChain```. Returns a Promise.
+
 ## publish subscribe
 
 *scBroker* provides [publish and subscribe](http://redis.io/topics/pubsub)
@@ -282,7 +243,7 @@ callback(err, value)
 #### subscribe
 
 ```js
-subscribe(channel, ackCallback)
+subscribe(channel)
 ```
 Watch a ```channel``` on *scBroker*. This is the *scBroker* equivalent to
 [Redis' ```subscribe()```](http://redis.io/commands/subscribe). When an event
@@ -292,14 +253,15 @@ scBrokerClient.on('message', function (channel, data) {
     // ...
 })
 ```
+Returns a Promise.
 
 #### unsubscribe
 
 ```js
-unsubscribe(channel, ackCallback)
+unsubscribe(channel)
 ```
 Unwatch the specified ```channel```. If ```channel``` is not specified, it
-will unsubscribe from all channels.
+will unsubscribe from all channels. Returns a Promise.
 
 #### on
 
@@ -329,53 +291,59 @@ messages from subscribed channels. Events are:
 #### publish
 
 ```js
-publish(channel, message, callback)
+publish(channel, message)
 ```
 Publish data to a channel - Can be any JSON-compatible JavaScript object.
+Returns a Promise.
 
 **Example:**
 
 After starting the server (*server.js*):
 
 ```js
-var scBroker = require('sc-broker')
-  , dss   = scBroker.createServer({port: 9000})
+var scBroker = require('sc-broker');
+var dss = scBroker.createServer({port: 9000});
 ```
 
 a first client (*client1.js*) can subscribe to channel ```foo``` and listen
 to ```messages```:
 
 ```js
-var scBroker = require('sc-broker')
-  , dc       = scBroker.createClient({port: 9000})
-  , ch       = 'foo'
-  , onMsgFn  = function (ch, data) {
-      console.log('message on channel ' + ch );
-      console.log('data:');
-      console.log(data);
-    }
-dc.subscribe(ch, function (err) {
-  if (!err) {
-    console.log('client 1 subscribed channel ' + ch  );
-  }
+var scBroker = require('sc-broker');
+var dc = scBroker.createClient({port: 9000});
+var ch = 'foo';
+var onMsgFn = function (ch, data) {
+  console.log('message on channel ' + ch);
+  console.log('data:');
+  console.log(data);
+};
+dc.subscribe(ch)
+.then(() => {
+  console.log('client 1 subscribed channel ' + ch);
 })
-dc.on('message', onMsgFn )
+.catch((err) => {
+  console.error(err);
+})
+dc.on('message', onMsgFn)
 ```
 
 If a second client (*client2.js*) publishes a message, the first client will
 execute the ```onMsgFn``` function:
 
 ```js
-var scBroker  = require('sc-broker')
-   , dc    = scBroker.createClient({port: 9000})
-   , data  = {a: 'b'}
-   , ch    = 'foo';
-dc.publish(ch,data , function (err) {
-  if (!err) {
-    console.log('client 2 published data:');
-    console.log(data);
-  }
+var scBroker = require('sc-broker');
+var dc = scBroker.createClient({port: 9000});
+var data = {a: 'b'};
+var ch = 'foo';
+
+dc.publish(ch,data)
+.then(() => {
+  console.log('client 2 published data:');
+  console.log(data);
 })
+.catch((err) => {
+  console.error(err);
+});
 ```
 
 ## Keys
@@ -402,7 +370,7 @@ bottom-level 'key' to 'Hello World'.
 If you were to call:
 ```js
 dataClient.get(['this', 'is', 'a'], function (err, val) {
-    console.log(val);
+  console.log(val);
 });
 ```
 The above would output:
@@ -424,8 +392,12 @@ specified key path (which in this case is 0).
 
 You can access numerically-indexed values like this:
 ```js
-dataClient.get(['this', 'is', 'a', 0], function (err, val) {
-    console.log(val);
+dataClient.get(['this', 'is', 'a', 0])
+.then((val) => {
+  console.log(val);
+})
+.catch((err) => {
+  console.error(err);
 });
 ```
 The output here will be 'foo'.
