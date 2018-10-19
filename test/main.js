@@ -587,6 +587,7 @@ describe('sc-broker client', function () {
 
   var ch1 = 'foo';
   var ch2 = 'bar';
+  var ch3 = 'allowOnce';
   var badChannel = 'badChannel';
   var silentChannel = 'silentChannel';
   var delayedChannel = 'delayedChannel';
@@ -607,6 +608,17 @@ describe('sc-broker client', function () {
         assert.equal(client.isSubscribed(ch1), true);
         assert(JSON.stringify(client.subscriptions()) === JSON.stringify([ch1]));
       });
+    });
+
+    it('should have a single consistent channel state in case of failure for the channel ' + ch3, function () {
+      return client.subscribe(ch3)
+      .then(() => {
+        assert.equal(client.isSubscribed(ch3), true);
+        return client.subscribe(ch3, true);
+      })
+      .then(() => {
+        assert.equal(client.isSubscribed(ch3), true);
+      })
     });
 
     it('can be blocked by middleware', function () {
