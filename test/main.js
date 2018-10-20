@@ -593,9 +593,11 @@ describe('sc-broker client', function () {
   var delayedChannel = 'delayedChannel';
 
   describe('client#subscriptions', function () {
-    it('should have no subscriptions (empty array)', function (done) {
-      assert(JSON.stringify(client.subscriptions()) === JSON.stringify([]));
-      done();
+    it('should have no subscriptions (empty array)', function () {
+      return client.subscriptions()
+      .then((result) => {
+        assert(JSON.stringify(result) === JSON.stringify([]));
+      });
     });
 
     it('should not reject', function () {
@@ -605,19 +607,38 @@ describe('sc-broker client', function () {
     it('should subscribe channel ' + ch1, function () {
       return client.subscribe(ch1)
       .then(() => {
-        assert.equal(client.isSubscribed(ch1), true);
-        assert(JSON.stringify(client.subscriptions()) === JSON.stringify([ch1]));
+        return client.isSubscribed(ch1);
+      })
+      .then((result) => {
+        assert.equal(result, true);
+        return client.subscriptions();
+      })
+      .then((result) => {
+        assert(JSON.stringify(result) === JSON.stringify([ch1]));
       });
     });
 
-    it('should have a single consistent channel state in case of failure for the channel ' + ch3, function () {
+    it('should stay in the subscribed state if the second subscribe request fails for channel ' + ch3, function () {
+      var error = null;
       return client.subscribe(ch3)
       .then(() => {
-        assert.equal(client.isSubscribed(ch3), true);
-        return client.subscribe(ch3, true);
+        return client.isSubscribed(ch3);
+      })
+      .then((result) => {
+        assert.equal(result, true);
+        return client.subscribe(ch3);
+      })
+      .catch((err) => {
+        error = err;
+        assert.equal(err.name, 'OnlyOnceError');
       })
       .then(() => {
-        assert.equal(client.isSubscribed(ch3), true);
+        assert.notEqual(error, null);
+        return client.isSubscribed(ch3);
+      })
+      .then((result) => {
+        assert.equal(result, true);
+        return client.unsubscribe(ch3);
       })
     });
 
@@ -627,8 +648,14 @@ describe('sc-broker client', function () {
         assert(/bad channel/.test(err.message));
       })
       .then(() => {
-        assert.strictEqual(client.isSubscribed(badChannel), false);
-        assert(!client.subscriptions().find((s) => { s === badChannel }));
+        return client.isSubscribed(badChannel);
+      })
+      .then((result) => {
+        assert.strictEqual(result, false);
+        return client.subscriptions();
+      })
+      .then((result) => {
+        assert(!result.some((channel) => { return channel === badChannel; }));
       });
     });
 
@@ -638,6 +665,75 @@ describe('sc-broker client', function () {
       .then(() => {
         var duration = Date.now() - start;
         assert.equal(duration >= 500, true);
+        return client.unsubscribe(delayedChannel);
+      });
+    });
+
+    it('should recover subscriptions after regaining lost connection to server', function () {
+      var start = Date.now();
+      var originalSubs = [];
+      var receivedMessages = [];
+      return client.subscribe(ch1)
+      .then(() => {
+        return client.subscribe(ch2);
+      })
+      .then(() => {
+        return client.subscribe(badChannel)
+        .catch(() => {});
+      })
+      .then(() => {
+        return client.subscribe(delayedChannel);
+      })
+      .then(() => {
+        return client.subscriptions();
+      })
+      .then((result) => {
+        originalSubs = result;
+        client._socket.end();
+      })
+      .then((result) => {
+        client.on('message', (channel, value) => {
+          receivedMessages.push({
+            channel: channel,
+            value: value
+          });
+        });
+        Promise.resolve()
+        .then(() => {
+          // Add a delay before sending publish to allow the
+          return new Promise((resolve, reject) => {
+            setTimeout(() => {
+              resolve();
+            }, 100);
+          });
+        })
+        .then(() => {
+          assert.equal(client.state, client.DISCONNECTED);
+          client.publish(delayedChannel, 'delayedMessage');
+        });
+      })
+      .then(() => {
+        return new Promise((resolve, reject) => {
+          client.on('ready', () => {
+            resolve();
+          });
+        });
+      })
+      .then(() => {
+        return client.subscriptions();
+      })
+      .then((result) => {
+        assert.equal(JSON.stringify(result), JSON.stringify(originalSubs));
+      })
+      .then(() => {
+        return new Promise((resolve, reject) => {
+          setTimeout(() => {
+            resolve();
+          }, 1000);
+        });
+      })
+      .then(() => {
+        assert.equal(receivedMessages.some((message) => { return message && message.value === 'delayedMessage'; }), true);
       });
     });
   });

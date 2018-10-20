@@ -105,6 +105,10 @@ var removeAllListeners = function (socket) {
   return channels;
 };
 
+var getSubscriptions = function (socket) {
+  return Object.keys(subscriptions[socket.id] || {});
+};
+
 var exec = function (query, baseKey) {
   var rebasedDataMap;
   if (baseKey) {
@@ -497,6 +501,11 @@ var actions = {
   isSubscribed: function (command, socket) {
     var result = hasListener(socket, command.channel);
     send(socket, {id: command.id, type: 'response', action: 'isSubscribed', channel: command.channel, value: result}, pubSubOptions);
+  },
+
+  subscriptions: function (command, socket) {
+    var result = getSubscriptions(socket);
+    send(socket, {id: command.id, type: 'response', action: 'subscriptions', value: result}, pubSubOptions);
   },
 
   publish: function (command, socket) {

@@ -251,6 +251,7 @@ var Client = function (options) {
     self._timeout = 10000;
   }
 
+  // Only keeps track of the intention of subscription, not the actual state.
   self._subscriptionMap = {};
   self._commandMap = {};
   self._pendingBuffer = [];
@@ -347,13 +348,17 @@ var Client = function (options) {
     return 'n' + self._curID;
   };
 
-  self._flushPendingBuffers = function () {
+  self._flushPendingSubscriptionBuffers = function () {
     var subBufLen = self._pendingSubscriptionBuffer.length;
     for (var i = 0; i < subBufLen; i++) {
       var subCommandData = self._pendingSubscriptionBuffer[i];
       self._execCommand(subCommandData.command, subCommandData.options);
     }
     self._pendingSubscriptionBuffer = [];
+  };
+
+  self._flushPendingBuffers = function () {
+    self._flushPendingSubscriptionBuffers();
 
     var bufLen = self._pendingBuffer.length;
     for (var j = 0; j < bufLen; j++) {
@@ -361,6 +366,12 @@ var Client = function (options) {
       self._execCommand(commandData.command, commandData.options);
     }
     self._pendingBuffer = [];
+  };
+
+  self._flushPendingSubscriptionBuffersIfConnected = function () {
+    if (self.state === self.CONNECTED) {
+      self._flushPendingSubscriptionBuffers();
+    }
   };
 
   self._flushPendingBuffersIfConnected = function () {
@@ -386,7 +397,7 @@ var Client = function (options) {
     }
   };
 
-  self._bufferSubscribeCommand = function (command, callback, options) {
+  self._bufferSubscriptionCommand = function (command, callback, options) {
     self._prepareAndTrackCommand(command, callback);
     // Clone the command argument to prevent the user from modifying the data
     // whilst the command is still pending in the buffer.
@@ -425,13 +436,13 @@ var Client = function (options) {
   // Recovers subscriptions after Broker server crash
   self._resubscribeAll = function () {
     var subscribePromises = Object.keys(self._subscriptionMap || {}).map(function (channel) {
-      return self.subscribe(channel, true);
+      return self.subscribe(channel)
+      .catch((err) => {
+        var errorMessage = err.message || err;
+        self.emit('error', new BrokerError('Failed to resubscribe to broker channel - ' + errorMessage));
+      });
     });
-    Promise.all(subscribePromises)
-    .catch(function (err) {
-      var errorMessage = err.message || err;
-      self.emit('error', new BrokerError('Failed to resubscribe to broker channels - ' + errorMessage));
-    });
+    return Promise.all(subscribePromises);
   };
 
   self._connectHandler = function () {
@@ -445,9 +456,11 @@ var Client = function (options) {
       } else {
         self.state = self.CONNECTED;
         self.connectAttempts = 0;
-        self._resubscribeAll();
-        self._flushPendingBuffers();
-        self.emit('ready', brokerInfo);
+        self._resubscribeAll()
+        .then(() => {
+          self._flushPendingBuffers();
+          self.emit('ready', brokerInfo);
+        });
       }
     };
     self._prepareAndTrackCommand(command, initHandler);
@@ -512,43 +525,34 @@ var Client = function (options) {
     return execOptions;
   };
 
-  self.subscribe = function (channel, force) {
+  self.subscribe = function (channel) {
     return new Promise(function (resolve, reject) {
-      if (!force && self.isSubscribed(channel)) {
+      self._subscriptionMap[channel] = true;
+
+      var command = {
+        channel: channel,
+        action: 'subscribe'
+      };
+      var callback = function (err) {
+        if (err) {
+          delete self._subscriptionMap[channel];
+          reject(err);
+          return;
+        }
         resolve();
-      } else {
-        self._subscriptionMap[channel] = 'pending';
+      };
+      var execOptions = self._getPubSubExecOptions();
 
-        var command = {
-          channel: channel,
-          action: 'subscribe'
-        };
-        var callback = function (err) {
-          if (err) {
-            reject(err);
-            self.emit('subscribeFail', err, channel);
-            return;
-          }
-          self._subscriptionMap[channel] = 'subscribed';
-          resolve();
-          self.emit('subscribe', channel);
-        };
-        var execOptions = self._getPubSubExecOptions();
-
-        self._connect();
-        self._bufferSubscribeCommand(command, callback, execOptions);
-        self._flushPendingBuffersIfConnected();
-      }
+      self._connect();
+      self._bufferSubscriptionCommand(command, callback, execOptions);
+      self._flushPendingSubscriptionBuffersIfConnected();
     });
   };
 
   self.unsubscribe = function (channel) {
     return new Promise(function (resolve, reject) {
-      // No need to unsubscribe if the server is disconnected
-      // The server cleans up automatically in case of disconnection
-      if (self.isSubscribed(channel) && self.state === self.CONNECTED) {
-        delete self._subscriptionMap[channel];
-
+      delete self._subscriptionMap[channel];
+      if (self.state === self.CONNECTED) {
         var command = {
           action: 'unsubscribe',
           channel: channel
@@ -560,40 +564,36 @@ var Client = function (options) {
           // connection fails then all subscriptions
           // will be cleared automatically anyway.
           resolve();
-          self.emit('unsubscribe');
         };
 
         var execOptions = self._getPubSubExecOptions();
-        self._bufferCommand(command, cb, execOptions);
-        self._flushPendingBuffers();
+        self._bufferSubscriptionCommand(command, cb, execOptions);
+        self._flushPendingSubscriptionBuffersIfConnected();
       } else {
-        delete self._subscriptionMap[channel];
+        // No need to unsubscribe if the server is disconnected
+        // The server cleans up automatically in case of disconnection
         resolve();
       }
     });
   };
 
-  self.subscriptions = function (includePending) {
-    var allSubs = Object.keys(self._subscriptionMap || {});
-    if (includePending) {
-      return allSubs;
-    }
-    var activeSubs = [];
-    var len = allSubs.length;
-    for (var i = 0; i < len; i++) {
-      var sub = allSubs[i];
-      if (self._subscriptionMap[sub] === 'subscribed') {
-        activeSubs.push(sub);
-      }
-    }
-    return activeSubs;
+  self.subscriptions = function () {
+    var command = {
+      action: 'subscriptions'
+    };
+
+    var execOptions = self._getPubSubExecOptions();
+    return self._processCommand(command, execOptions);
   };
 
-  self.isSubscribed = function (channel, includePending) {
-    if (includePending) {
-      return !!self._subscriptionMap[channel];
-    }
-    return self._subscriptionMap[channel] === 'subscribed';
+  self.isSubscribed = function (channel) {
+    var command = {
+      action: 'isSubscribed',
+      channel: channel
+    };
+
+    var execOptions = self._getPubSubExecOptions();
+    return self._processCommand(command, execOptions);
   };
 
   self.publish = function (channel, value) {
