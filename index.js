@@ -102,18 +102,16 @@ var Server = function (options) {
       var err = formatError(value.data);
       self.emit('error', err);
     } else if (value.type === 'brokerMessage') {
-      if (value.cid) {
-        self.emit('brokerRequest', value.brokerId, value.data, function (err, data) {
-          self._server.send({
-            type: 'masterResponse',
-            error: scErrors.dehydrateError(err, true),
-            data: data,
-            rid: value.cid
-          });
+      self.emit('brokerMessage', value.brokerId, value.data);
+    } else if (value.type === 'brokerRequest') {
+      self.emit('brokerRequest', value.brokerId, value.data, function (err, data) {
+        self._server.send({
+          type: 'masterResponse',
+          error: scErrors.dehydrateError(err, true),
+          data: data,
+          rid: value.cid
         });
-      } else {
-        self.emit('brokerData', value.brokerId, value.data);
-      }
+      });
     } else if (value.type === 'brokerResponse') {
       var responseHandler = self._pendingResponseHandlers[value.rid];
       if (responseHandler) {
@@ -158,7 +156,7 @@ var Server = function (options) {
     return cid;
   };
 
-  self.sendDataToBroker = function (data) {
+  self.sendMessageToBroker = function (data) {
     var messagePacket = {
       type: 'masterMessage',
       data: data
@@ -169,7 +167,7 @@ var Server = function (options) {
   self.sendRequestToBroker = function (data) {
     return new Promise(function (resolve, reject) {
       var messagePacket = {
-        type: 'masterMessage',
+        type: 'masterRequest',
         data: data
       };
       messagePacket.cid = self._createIPCResponseHandler(function (err, result) {
@@ -619,9 +617,9 @@ var Client = function (options) {
     return self._processCommand(command);
   };
 
-  self.sendData = function (data) {
+  self.sendMessage = function (data) {
     var command = {
-      action: 'sendData',
+      action: 'sendMessage',
       value: data,
       noAck: 1
     };

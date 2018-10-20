@@ -202,7 +202,7 @@ SCBroker.prototype._init = function (options) {
 
 SCBroker.prototype.run = function () {};
 
-SCBroker.prototype.sendDataToMaster = function (data) {
+SCBroker.prototype.sendMessageToMaster = function (data) {
   var messagePacket = {
     type: 'brokerMessage',
     brokerId: this.id,
@@ -216,7 +216,7 @@ SCBroker.prototype.sendRequestToMaster = function (data) {
 
   return new Promise(function (resolve, reject) {
     var messagePacket = {
-      type: 'brokerMessage',
+      type: 'brokerRequest',
       brokerId: self.id,
       data: data
     };
@@ -533,8 +533,8 @@ var actions = {
     });
   },
 
-  sendData: function (command, socket) {
-    scBroker.emit('data', command.value);
+  sendMessage: function (command, socket) {
+    scBroker.emit('message', command.value);
   }
 };
 
@@ -625,21 +625,26 @@ process.on('message', function (m) {
   if (m) {
     if (m.type === 'masterMessage') {
       if (scBroker) {
-        if (m.cid) {
-          scBroker.emit('masterRequest', m.data, function (err, data) {
-            process.send({
-              type: 'brokerResponse',
-              brokerId: scBroker.id,
-              error: scErrors.dehydrateError(err, true),
-              data: data,
-              rid: m.cid
-            });
-          });
-        } else {
-          scBroker.emit('masterData', m.data);
-        }
+        scBroker.emit('masterMessage', m.data);
       } else {
         var errorMessage = 'Cannot send message to broker with id ' + BROKER_ID +
+        ' because the broker was not instantiated';
+        var err = new BrokerError(errorMessage);
+        sendErrorToMaster(err);
+      }
+    } else if (m.type === 'masterRequest') {
+      if (scBroker) {
+        scBroker.emit('masterRequest', m.data, function (err, data) {
+          process.send({
+            type: 'brokerResponse',
+            brokerId: scBroker.id,
+            error: scErrors.dehydrateError(err, true),
+            data: data,
+            rid: m.cid
+          });
+        });
+      } else {
+        var errorMessage = 'Cannot send request to broker with id ' + BROKER_ID +
         ' because the broker was not instantiated';
         var err = new BrokerError(errorMessage);
         sendErrorToMaster(err);

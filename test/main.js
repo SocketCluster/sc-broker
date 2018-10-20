@@ -134,9 +134,9 @@ describe('sc-broker client', function () {
     });
   });
 
-  describe('sc-broker#sendDataToBroker', function () {
+  describe('sc-broker#sendMessageToBroker', function () {
     it('should be able to send data to the broker and not timeout if a broker does not respond', function () {
-      return server.sendDataToBroker({doNothing: true});
+      return server.sendMessageToBroker({doNothing: true});
     });
   });
 
@@ -156,7 +156,7 @@ describe('sc-broker client', function () {
           respond(null, responseData);
         }
       });
-      server.on('brokerData', (brokerId, data) => {
+      server.on('brokerMessage', (brokerId, data) => {
         if (data.brokerTestResult) {
           currentTestCallbacks[data.brokerTestResult](data.err, data.data);
         }
@@ -171,7 +171,7 @@ describe('sc-broker client', function () {
         assert.equal(actual, expected);
         done();
       };
-      server.sendDataToBroker({brokerTest: 'test1'});
+      server.sendMessageToBroker({brokerTest: 'test1'});
     });
 
     it('should be able to send a message to the master and get back an error if something went wrong', function (done) {
@@ -181,7 +181,7 @@ describe('sc-broker client', function () {
         assert.equal(err.message, 'This is an error');
         done();
       };
-      server.sendDataToBroker({brokerTest: 'test2'});
+      server.sendMessageToBroker({brokerTest: 'test2'});
     });
 
     it('should be able to send a message to the master and timeout if callback is provided and master does not respond', function (done) {
@@ -190,14 +190,14 @@ describe('sc-broker client', function () {
         assert.equal(err.name, 'TimeoutError');
         done();
       };
-      server.sendDataToBroker({brokerTest: 'test3'});
+      server.sendMessageToBroker({brokerTest: 'test3'});
     });
 
     it('should be able to send a message to the master and not timeout if no callback is provided and master does not respond', function (done) {
       currentTestCallbacks['test4'] = function (err, data) {
         done();
       };
-      server.sendDataToBroker({brokerTest: 'test4'});
+      server.sendMessageToBroker({brokerTest: 'test4'});
     });
   });
 
@@ -788,16 +788,16 @@ describe('sc-broker client', function () {
     });
   });
 
-  describe('client#sendData', function () {
+  describe('client#sendMessage', function () {
     it('can send data to broker', function () {
       var startTime;
-      return client.sendData('hello')
+      return client.sendMessage('hello')
       .then(() => {
         startTime = Date.now();
-        return client.sendData('world');
+        return client.sendMessage('world');
       })
       .then(() => {
-        // sendData should resolve on the next tick.
+        // sendMessage should resolve on the next tick.
         assert.equal(Date.now() - startTime < 10, true);
         return wait(100);
       })

@@ -20,11 +20,11 @@ class BrokerControllerStub extends SCBroker {
       }
     });
 
-    self.on('data', (value) => {
+    self.on('message', (value) => {
       dataBuffer.push(value);
     });
 
-    self.on('masterData', (data) => {
+    self.on('masterMessage', (data) => {
       if (data.killBroker) {
         console.log('Broker is shutting down');
         process.exit();
@@ -35,13 +35,13 @@ class BrokerControllerStub extends SCBroker {
               brokerSubject: 'there'
             })
             .then((data) => {
-              self.sendDataToMaster({
+              self.sendMessageToMaster({
                 brokerTestResult: 'test1',
                 data: data
               });
             })
             .catch((err) => {
-              self.sendDataToMaster({
+              self.sendMessageToMaster({
                 brokerTestResult: 'test1',
                 err: scErrors.dehydrateError(err, true)
               });
@@ -51,13 +51,13 @@ class BrokerControllerStub extends SCBroker {
               sendBackError: true
             })
             .then((data) => {
-              self.sendDataToMaster({
+              self.sendMessageToMaster({
                 brokerTestResult: 'test2',
                 data: data
               });
             })
             .catch((err) => {
-              self.sendDataToMaster({
+              self.sendMessageToMaster({
                 brokerTestResult: 'test2',
                 err: scErrors.dehydrateError(err, true)
               });
@@ -67,23 +67,23 @@ class BrokerControllerStub extends SCBroker {
               doNothing: true
             })
             .then((data) => {
-              self.sendDataToMaster({
+              self.sendMessageToMaster({
                 brokerTestResult: 'test3',
                 data: data
               });
             })
             .catch((err) => {
-              self.sendDataToMaster({
+              self.sendMessageToMaster({
                 brokerTestResult: 'test3',
                 err: scErrors.dehydrateError(err, true)
               });
             });
           } else if (data.brokerTest === 'test4') {
-            self.sendDataToMaster({
+            self.sendMessageToMaster({
               doNothing: true
             });
             setTimeout(() => {
-              self.sendDataToMaster({
+              self.sendMessageToMaster({
                 brokerTestResult: 'test4',
                 err: null,
                 data: null

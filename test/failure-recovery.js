@@ -91,7 +91,7 @@ describe('sc-broker failure handling and recovery', function () {
           pubCount++;
           // Kill the server at 30% of the way.
           if (pubCount === Math.round(pubTargetNum * 0.3)) {
-            server.sendDataToBroker({killBroker: true});
+            server.sendMessageToBroker({killBroker: true});
           }
         } else {
           clearInterval(pubIntervalHandle);
