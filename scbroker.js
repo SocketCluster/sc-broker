@@ -518,12 +518,12 @@ var actions = {
     send(socket, response, pubSubOptions);
   },
 
-  send: function (command, socket) {
-    scBroker.emit('message', command.value, function (err, data) {
+  sendRequest: function (command, socket) {
+    scBroker.emit('request', command.value, function (err, data) {
       var response = {
         id: command.id,
         type: 'response',
-        action: 'send',
+        action: 'sendRequest',
         value: data
       };
       if (err) {
@@ -531,6 +531,10 @@ var actions = {
       }
       send(socket, response);
     });
+  },
+
+  sendData: function (command, socket) {
+    scBroker.emit('data', command.value);
   }
 };
 

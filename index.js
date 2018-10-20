@@ -381,20 +381,22 @@ var Client = function (options) {
   };
 
   self._prepareAndTrackCommand = function (command, callback) {
-    command.id = self._genID();
-    if (callback) {
-      var request = {callback: callback, command: command};
-      self._commandMap[command.id] = request;
-
-      request.timeout = setTimeout(function () {
-        var error = new TimeoutError('Broker Error - The ' + command.action + ' action timed out');
-        delete request.callback;
-        if (self._commandMap.hasOwnProperty(command.id)) {
-          delete self._commandMap[command.id];
-        }
-        callback(error);
-      }, self._timeout);
+    if (command.noAck) {
+      callback();
+      return;
     }
+    command.id = self._genID();
+    var request = {callback: callback, command: command};
+    self._commandMap[command.id] = request;
+
+    request.timeout = setTimeout(function () {
+      var error = new TimeoutError('Broker Error - The ' + command.action + ' action timed out');
+      delete request.callback;
+      if (self._commandMap.hasOwnProperty(command.id)) {
+        delete self._commandMap[command.id];
+      }
+      callback(error);
+    }, self._timeout);
   };
 
   self._bufferSubscriptionCommand = function (command, callback, options) {
@@ -419,7 +421,7 @@ var Client = function (options) {
     self._pendingBuffer.push(commandData);
   };
 
-  self._processCommand = function (command, options) {
+  self._processCommand = function (command, execOptions) {
     return new Promise(function (resolve, reject) {
       self._connect();
       self._bufferCommand(command, function (err, result) {
@@ -428,7 +430,7 @@ var Client = function (options) {
           return;
         }
         resolve(result);
-      }, options);
+      }, execOptions);
       self._flushPendingBuffersIfConnected();
     });
   };
@@ -608,10 +610,20 @@ var Client = function (options) {
     return self._processCommand(command, execOptions);
   };
 
-  self.send = function (data) {
+  self.sendRequest = function (data) {
     var command = {
-      action: 'send',
+      action: 'sendRequest',
       value: data
+    };
+
+    return self._processCommand(command);
+  };
+
+  self.sendData = function (data) {
+    var command = {
+      action: 'sendData',
+      value: data,
+      noAck: 1
     };
 
     return self._processCommand(command);

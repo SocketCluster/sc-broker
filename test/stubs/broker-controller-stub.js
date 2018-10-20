@@ -9,7 +9,22 @@ class BrokerControllerStub extends SCBroker {
     console.log('Start broker');
     addMiddleware(self);
 
-    self.on('masterData', function (data) {
+    var dataBuffer = [];
+
+    self.on('request', (value, respond) => {
+      if (value && value.getDataBuffer) {
+        respond(null, dataBuffer);
+        dataBuffer = [];
+      } else {
+        respond(null, value + 1);
+      }
+    });
+
+    self.on('data', (value) => {
+      dataBuffer.push(value);
+    });
+
+    self.on('masterData', (data) => {
       if (data.killBroker) {
         console.log('Broker is shutting down');
         process.exit();
@@ -51,13 +66,13 @@ class BrokerControllerStub extends SCBroker {
             self.sendRequestToMaster({
               doNothing: true
             })
-            .then(function (data) {
+            .then((data) => {
               self.sendDataToMaster({
                 brokerTestResult: 'test3',
                 data: data
               });
             })
-            .catch(function (err) {
+            .catch((err) => {
               self.sendDataToMaster({
                 brokerTestResult: 'test3',
                 err: scErrors.dehydrateError(err, true)
@@ -67,7 +82,7 @@ class BrokerControllerStub extends SCBroker {
             self.sendDataToMaster({
               doNothing: true
             });
-            setTimeout(function () {
+            setTimeout(() => {
               self.sendDataToMaster({
                 brokerTestResult: 'test4',
                 err: null,
@@ -79,7 +94,7 @@ class BrokerControllerStub extends SCBroker {
       }
     });
 
-    self.on('masterRequest', function (data, respond) {
+    self.on('masterRequest', (data, respond) => {
       if (data.sendBackError) {
         var err = new Error('This is an error');
         err.name = 'CustomBrokerError';

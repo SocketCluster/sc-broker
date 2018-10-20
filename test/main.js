@@ -17,6 +17,14 @@ if (process.env.TEST_TYPE === 'es6') {
   conf.brokerControllerPath = __dirname + '/stubs/broker-controller-stub.js';
 }
 
+var wait = function (duration) {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      resolve();
+    }, duration);
+  });
+};
+
 var server;
 var client;
 
@@ -199,10 +207,10 @@ describe('sc-broker client', function () {
     });
   });
 
-  var val1   = 'This is a value'
-    , path1  = ['a', 'b', 'c']
-    , path2  = ['d', 'e', 'f']
-    , val2   = 'append this';
+  var val1 = 'This is a value';
+  var path1 = ['a', 'b', 'c'];
+  var path2 = ['d', 'e', 'f'];
+  var val2 = 'append this';
 
   describe('client#get', function () {
     it('should provide client.get', function () {
@@ -691,33 +699,32 @@ describe('sc-broker client', function () {
         originalSubs = result;
         client._socket.end();
       })
-      .then((result) => {
-        client.on('message', (channel, value) => {
-          receivedMessages.push({
-            channel: channel,
-            value: value
-          });
-        });
-        Promise.resolve()
-        .then(() => {
-          // Add a delay before sending publish to allow the
-          return new Promise((resolve, reject) => {
-            setTimeout(() => {
-              resolve();
-            }, 100);
-          });
-        })
-        .then(() => {
-          assert.equal(client.state, client.DISCONNECTED);
-          client.publish(delayedChannel, 'delayedMessage');
-        });
-      })
       .then(() => {
-        return new Promise((resolve, reject) => {
-          client.on('ready', () => {
-            resolve();
-          });
-        });
+        return Promise.all([
+          Promise.resolve()
+          .then(() => {
+            client.on('message', (channel, value) => {
+              receivedMessages.push({
+                channel: channel,
+                value: value
+              });
+            });
+          })
+          .then(() => {
+            // Add a delay before sending publish to allow the client
+            // to disconnect.
+            return wait(100);
+          })
+          .then(() => {
+            assert.equal(client.state, client.DISCONNECTED);
+            return client.publish(delayedChannel, 'delayedMessage');
+          }),
+          new Promise((resolve, reject) => {
+            client.on('ready', () => {
+              resolve();
+            });
+          })
+        ]);
       })
       .then(() => {
         return client.subscriptions();
@@ -726,11 +733,7 @@ describe('sc-broker client', function () {
         assert.equal(JSON.stringify(result), JSON.stringify(originalSubs));
       })
       .then(() => {
-        return new Promise((resolve, reject) => {
-          setTimeout(() => {
-            resolve();
-          }, 1000);
-        });
+        return wait(1000);
       })
       .then(() => {
         assert.equal(receivedMessages.some((message) => { return message && message.value === 'delayedMessage'; }), true);
@@ -772,6 +775,37 @@ describe('sc-broker client', function () {
       return client.publish(ch2, 'test message')
       .then((value) => {
         assert.strictEqual(value, 'transformed test message');
+      });
+    });
+  });
+
+  describe('client#sendRequest', function () {
+    it('can send a request to broker and receive a response', function () {
+      return client.sendRequest(10)
+      .then((result) => {
+        assert.equal(result, 11);
+      });
+    });
+  });
+
+  describe('client#sendData', function () {
+    it('can send data to broker', function () {
+      var startTime;
+      return client.sendData('hello')
+      .then(() => {
+        startTime = Date.now();
+        return client.sendData('world');
+      })
+      .then(() => {
+        // sendData should resolve on the next tick.
+        assert.equal(Date.now() - startTime < 10, true);
+        return wait(100);
+      })
+      .then(() => {
+        return client.sendRequest({getDataBuffer: true})
+      })
+      .then((dataBuffer) => {
+        assert.equal(JSON.stringify(dataBuffer), JSON.stringify(['hello', 'world']));
       });
     });
   });
