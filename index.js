@@ -283,29 +283,35 @@ var Client = function (options) {
     });
     self._socket.on('close', handleDisconnection);
     self._socket.on('end', handleDisconnection);
-    self._socket.on('message', function (response) {
-      var id = response.id;
-      var rawError = response.error;
+    self._socket.on('message', function (packet) {
+      var id = packet.id;
+      var rawError = packet.error;
       var error = null;
       if (rawError != null) {
         error = scErrors.hydrateError(rawError, true);
       }
-      if (response.type === 'response') {
+      if (packet.type === 'response') {
         if (self._commandTracker.hasOwnProperty(id)) {
           clearTimeout(self._commandTracker[id].timeout);
-          var action = response.action;
+          var action = packet.action;
 
           var callback = self._commandTracker[id].callback;
           delete self._commandTracker[id];
 
-          if (response.value !== undefined) {
-            callback(error, response.value);
+          if (packet.value !== undefined) {
+            callback(error, packet.value);
           } else {
             callback(error);
           }
         }
-      } else if (response.type === 'message') {
-        self.emit('message', response.channel, response.value);
+      } else if (packet.type === 'message') {
+        // Emit the event on the next tick so that it does not disrupt
+        // the execution order. This is necessary because other parts of the
+        // code (such as the subscribe call) return Promises which resolve
+        // on the next tick.
+        setTimeout(() => {
+          self.emit('message', packet.channel, packet.value);
+        }, 0);
       }
     });
   };
