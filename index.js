@@ -399,10 +399,8 @@ var Client = function (options) {
 
   self._bufferSubscriptionCommand = function (command, callback, options) {
     self._prepareAndTrackCommand(command, callback);
-    // Clone the command argument to prevent the user from modifying the data
-    // whilst the command is still pending in the buffer.
     var commandData = {
-      command: JSON.parse(JSON.stringify(command)),
+      command: command,
       options: options
     };
     self._pendingSubscriptionBuffer.push(commandData);
@@ -530,8 +528,8 @@ var Client = function (options) {
       self._subscriptionMap[channel] = true;
 
       var command = {
-        channel: channel,
-        action: 'subscribe'
+        action: 'subscribe',
+        channel: channel
       };
       var callback = function (err) {
         if (err) {
