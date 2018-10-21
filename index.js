@@ -251,7 +251,7 @@ var Client = function (options) {
 
   // Only keeps track of the intention of subscription, not the actual state.
   self._subscriptionMap = {};
-  self._commandMap = {};
+  self._commandTracker = {};
   self._pendingBuffer = [];
   self._pendingSubscriptionBuffer = [];
 
@@ -291,12 +291,12 @@ var Client = function (options) {
         error = scErrors.hydrateError(rawError, true);
       }
       if (response.type === 'response') {
-        if (self._commandMap.hasOwnProperty(id)) {
-          clearTimeout(self._commandMap[id].timeout);
+        if (self._commandTracker.hasOwnProperty(id)) {
+          clearTimeout(self._commandTracker[id].timeout);
           var action = response.action;
 
-          var callback = self._commandMap[id].callback;
-          delete self._commandMap[id];
+          var callback = self._commandTracker[id].callback;
+          delete self._commandTracker[id];
 
           if (response.value !== undefined) {
             callback(error, response.value);
@@ -384,14 +384,14 @@ var Client = function (options) {
       return;
     }
     command.id = self._genID();
-    var request = {callback: callback, command: command};
-    self._commandMap[command.id] = request;
+    var request = {callback: callback};
+    self._commandTracker[command.id] = request;
 
     request.timeout = setTimeout(function () {
       var error = new TimeoutError('Broker Error - The ' + command.action + ' action timed out');
       delete request.callback;
-      if (self._commandMap.hasOwnProperty(command.id)) {
-        delete self._commandMap[command.id];
+      if (self._commandTracker.hasOwnProperty(command.id)) {
+        delete self._commandTracker[command.id];
       }
       callback(error);
     }, self._timeout);
