@@ -209,6 +209,7 @@ SCBroker.prototype.sendMessageToMaster = function (data) {
     data: data
   };
   process.send(messagePacket);
+  return Promise.resolve();
 };
 
 SCBroker.prototype.sendRequestToMaster = function (data) {

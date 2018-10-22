@@ -162,6 +162,7 @@ var Server = function (options) {
       data: data
     };
     self._server.send(messagePacket);
+    return Promise.resolve();
   };
 
   self.sendRequestToBroker = function (data) {
