@@ -513,13 +513,9 @@ var Client = function (options) {
   };
 
   self.extractValues = function (object) {
-    var array = [];
-    for (var i in object) {
-      if (object.hasOwnProperty(i)) {
-        array.push(object[i]);
-      }
-    }
-    return array;
+    return Object.keys(object || {}).map((key) => {
+      return object[key];
+    });
   };
 
   self._getPubSubExecOptions = function () {
