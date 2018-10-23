@@ -125,7 +125,7 @@ var pendingResponseHandlers = {};
 function createIPCResponseHandler(ipcAckTimeout, callback) {
   var cid = uuid.v4();
 
-  var responseTimeout = setTimeout(function () {
+  var responseTimeout = setTimeout(() => {
     var responseHandler = pendingResponseHandlers[cid];
     delete pendingResponseHandlers[cid];
     var timeoutError = new TimeoutError('IPC response timed out');
@@ -213,15 +213,13 @@ SCBroker.prototype.sendMessageToMaster = function (data) {
 };
 
 SCBroker.prototype.sendRequestToMaster = function (data) {
-  var self = this;
-
-  return new Promise(function (resolve, reject) {
+  return new Promise((resolve, reject) => {
     var messagePacket = {
       type: 'brokerRequest',
-      brokerId: self.id,
+      brokerId: this.id,
       data: data
     };
-    messagePacket.cid = createIPCResponseHandler(self.ipcAckTimeout, function (err, result) {
+    messagePacket.cid = createIPCResponseHandler(this.ipcAckTimeout, (err, result) => {
       if (err) {
         reject(err);
         return;
@@ -249,14 +247,13 @@ SCBroker.prototype.publish = function (channel, message) {
 };
 
 SCBroker.prototype._passThroughMiddleware = function (command, socket, cb) {
-  var self = this;
   var action = command.action;
   var callbackInvoked = false;
 
-  var applyEachMiddleware = function (type, req, cb) {
-    async.applyEachSeries(self._middleware[type], req, function (err) {
+  var applyEachMiddleware = (type, req, cb) => {
+    async.applyEachSeries(this._middleware[type], req, (err) => {
       if (callbackInvoked) {
-        self.emit('warning', new InvalidActionError(`Callback for ${type} middleware was already invoked`));
+        this.emit('warning', new InvalidActionError(`Callback for ${type} middleware was already invoked`));
       } else {
         callbackInvoked = true;
         cb(err, req);
@@ -289,7 +286,7 @@ SCBroker.prototype.removeMiddleware = function (type, middleware) {
     throw new InvalidArgumentsError(`Middleware type "${type}" is not supported`);
   }
 
-  this._middleware[type] = middlewareFunctions.filter(function (fn) {
+  this._middleware[type] = middlewareFunctions.filter((fn) => {
     return fn !== middleware;
   });
 };
@@ -520,7 +517,7 @@ var actions = {
   },
 
   sendRequest: function (command, socket) {
-    scBroker.emit('request', command.value, function (err, data) {
+    scBroker.emit('request', command.value, (err, data) => {
       var response = {
         id: command.id,
         type: 'response',
@@ -557,9 +554,9 @@ var handleConnection = function (sock) {
 
   connections[sock.id] = sock;
 
-  sock.on('message', function (command) {
+  sock.on('message', (command) => {
     if (initialized.hasOwnProperty(sock.id) || command.action === 'init') {
-      scBroker._passThroughMiddleware(command, sock, function (err) {
+      scBroker._passThroughMiddleware(command, sock, (err) => {
         try {
           if (err) {
             throw err;
@@ -578,7 +575,7 @@ var handleConnection = function (sock) {
     }
   });
 
-  sock.on('close', function () {
+  sock.on('close', () => {
     delete connections[sock.id];
 
     if (initialized[sock.id]) {
@@ -635,7 +632,7 @@ process.on('message', function (m) {
       }
     } else if (m.type === 'masterRequest') {
       if (scBroker) {
-        scBroker.emit('masterRequest', m.data, function (err, data) {
+        scBroker.emit('masterRequest', m.data, (err, data) => {
           process.send({
             type: 'brokerResponse',
             brokerId: scBroker.id,
@@ -657,7 +654,7 @@ process.on('message', function (m) {
 });
 
 var killServer = function () {
-  comServer.close(function () {
+  comServer.close(() => {
     process.exit();
   });
 
@@ -667,7 +664,7 @@ var killServer = function () {
     }
   }
 
-  setTimeout(function () {
+  setTimeout(() => {
     process.exit();
   }, PROCESS_TERM_TIMEOUT);
 };
@@ -675,7 +672,7 @@ var killServer = function () {
 process.on('SIGTERM', killServer);
 process.on('disconnect', killServer);
 
-setInterval(function () {
+setInterval(() => {
   var keys = dataExpirer.extractExpiredKeys();
   var len = keys.length;
   for (var i = 0; i < len; i++) {

@@ -6,14 +6,12 @@ import addMiddleware from './middleware';
 
 class BrokerControllerStub extends SCBroker {
   run() {
-    var self = this;
-
     console.log('Start broker');
-    addMiddleware(self);
+    addMiddleware(this);
 
     var dataBuffer = [];
 
-    self.on('request', (value, respond) => {
+    this.on('request', (value, respond) => {
       if (value && value.getDataBuffer) {
         respond(null, dataBuffer);
         dataBuffer = [];
@@ -22,70 +20,70 @@ class BrokerControllerStub extends SCBroker {
       }
     });
 
-    self.on('message', (value) => {
+    this.on('message', (value) => {
       dataBuffer.push(value);
     });
 
-    self.on('masterMessage', (data) => {
+    this.on('masterMessage', (data) => {
       if (data.killBroker) {
         console.log('Broker is shutting down');
         process.exit();
       } else {
         if (data.brokerTest) {
           if (data.brokerTest === 'test1') {
-            self.sendRequestToMaster({
+            this.sendRequestToMaster({
               brokerSubject: 'there'
             })
             .then((data) => {
-              self.sendMessageToMaster({
+              this.sendMessageToMaster({
                 brokerTestResult: 'test1',
                 data: data
               });
             })
             .catch((err) => {
-              self.sendMessageToMaster({
+              this.sendMessageToMaster({
                 brokerTestResult: 'test1',
                 err: scErrors.dehydrateError(err, true)
               });
             });
           } else if (data.brokerTest === 'test2') {
-            self.sendRequestToMaster({
+            this.sendRequestToMaster({
               sendBackError: true
             })
             .then((data) => {
-              self.sendMessageToMaster({
+              this.sendMessageToMaster({
                 brokerTestResult: 'test2',
                 data: data
               });
             })
             .catch((err) => {
-              self.sendMessageToMaster({
+              this.sendMessageToMaster({
                 brokerTestResult: 'test2',
                 err: scErrors.dehydrateError(err, true)
               });
             });
           } else if (data.brokerTest === 'test3') {
-            self.sendRequestToMaster({
+            this.sendRequestToMaster({
               doNothing: true
             })
             .then((data) => {
-              self.sendMessageToMaster({
+              this.sendMessageToMaster({
                 brokerTestResult: 'test3',
                 data: data
               });
             })
             .catch((err) => {
-              self.sendMessageToMaster({
+              this.sendMessageToMaster({
                 brokerTestResult: 'test3',
                 err: scErrors.dehydrateError(err, true)
               });
             });
           } else if (data.brokerTest === 'test4') {
-            self.sendMessageToMaster({
+            this.sendMessageToMaster({
               doNothing: true
             });
             setTimeout(() => {
-              self.sendMessageToMaster({
+              this.sendMessageToMaster({
                 brokerTestResult: 'test4',
                 err: null,
                 data: null
@@ -96,7 +94,7 @@ class BrokerControllerStub extends SCBroker {
       }
     });
 
-    self.on('masterRequest', (data, respond) => {
+    this.on('masterRequest', (data, respond) => {
       if (data.sendBackError) {
         var err = new Error('This is an error');
         err.name = 'CustomBrokerError';

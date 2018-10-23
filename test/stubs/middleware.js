@@ -1,7 +1,7 @@
 module.exports = function (scBroker) {
   var hasSeenAllowOnceChannelAlready = false;
 
-  scBroker.addMiddleware(scBroker.MIDDLEWARE_SUBSCRIBE, function (req, next) {
+  scBroker.addMiddleware(scBroker.MIDDLEWARE_SUBSCRIBE, (req, next) => {
     if (req.channel === 'allowOnce') {
       if (hasSeenAllowOnceChannelAlready) {
         var onlyOnceError = new Error('Can only subscribe once to the allowOnce channel')
@@ -15,7 +15,7 @@ module.exports = function (scBroker) {
     }
 
     if (req.channel === 'delayedChannel') {
-      setTimeout(function () {
+      setTimeout(() => {
         next();
       }, 500);
     } else {
@@ -23,7 +23,7 @@ module.exports = function (scBroker) {
     }
   });
 
-  scBroker.addMiddleware(scBroker.MIDDLEWARE_PUBLISH_IN, function (req, next) {
+  scBroker.addMiddleware(scBroker.MIDDLEWARE_PUBLISH_IN, (req, next) => {
     if (req.channel === 'silentChannel') {
       return next(new Error('silent channel'));
     } else if (req.command.value === 'test message') {
@@ -31,7 +31,7 @@ module.exports = function (scBroker) {
     }
 
     if (req.channel === 'delayedChannel') {
-      setTimeout(function () {
+      setTimeout(() => {
         next();
       }, 500);
     } else {
@@ -40,7 +40,7 @@ module.exports = function (scBroker) {
   });
 
   // Ensure middleware can be removed
-  let badMiddleware = function (req, next) {
+  let badMiddleware = (req, next) => {
     throw new Error('This code should be unreachable!');
   };
   scBroker.addMiddleware(scBroker.MIDDLEWARE_SUBSCRIBE, badMiddleware);

@@ -32,14 +32,14 @@ describe('sc-broker client', function () {
 
   before('run the server before start', function (done) {
     server = scBroker.createServer(conf);
-    server.on('error', function (err) {
+    server.on('error', (err) => {
       console.log('SERVER ERROR:', err);
     });
     client = scBroker.createClient(conf);
-    client.on('error', function (err) {
+    client.on('error', (err) => {
       console.log('CLIENT ERROR:', err);
     });
-    server.on('ready', function () {
+    server.on('ready', () => {
       done();
     });
   });
@@ -165,7 +165,7 @@ describe('sc-broker client', function () {
     });
 
     it('should be able to send a message to the master and get a response', function (done) {
-      currentTestCallbacks['test1'] = function (err, data) {
+      currentTestCallbacks['test1'] = (err, data) => {
         var expected = JSON.stringify({hello: 'there'});
         var actual = JSON.stringify(data);
         assert.equal(actual, expected);
@@ -175,7 +175,7 @@ describe('sc-broker client', function () {
     });
 
     it('should be able to send a message to the master and get back an error if something went wrong', function (done) {
-      currentTestCallbacks['test2'] = function (err, data) {
+      currentTestCallbacks['test2'] = (err, data) => {
         assert.notEqual(err, null);
         assert.equal(err.name, 'CustomMasterError');
         assert.equal(err.message, 'This is an error');
@@ -185,7 +185,7 @@ describe('sc-broker client', function () {
     });
 
     it('should be able to send a message to the master and timeout if callback is provided and master does not respond', function (done) {
-      currentTestCallbacks['test3'] = function (err, data) {
+      currentTestCallbacks['test3'] = (err, data) => {
         assert.notEqual(err, null);
         assert.equal(err.name, 'TimeoutError');
         done();
@@ -194,7 +194,7 @@ describe('sc-broker client', function () {
     });
 
     it('should be able to send a message to the master and not timeout if no callback is provided and master does not respond', function (done) {
-      currentTestCallbacks['test4'] = function (err, data) {
+      currentTestCallbacks['test4'] = (err, data) => {
         done();
       };
       server.sendMessageToBroker({brokerTest: 'test4'});
@@ -222,14 +222,15 @@ describe('sc-broker client', function () {
       .then((value) => {
         return client.get(path2);
       })
-      .then(function (value) {
+      .then((value) => {
         assert.equal(value, val1);
       });
     });
   });
 
   describe('client#add', function () {
-    it('should add a value to an existing, '
+    it(
+      'should add a value to an existing, '
       + 'existing should be kept',
       function () {
         return client.set(path2, val1, true)
