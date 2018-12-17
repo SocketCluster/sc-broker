@@ -1,7 +1,7 @@
-var scBroker = require('../index');
-var assert = require('assert');
+const scBroker = require('../index');
+const assert = require('assert');
 
-var conf = {
+let conf = {
   port: 9002,
   timeout: 2000,
   ipcAckTimeout: 1000,
@@ -16,15 +16,15 @@ if (process.env.TEST_TYPE === 'es6') {
   conf.brokerControllerPath = __dirname + '/stubs/broker-controller-stub.js';
 }
 
-var server;
-var client;
-var testFinished = false;
+let server;
+let client;
+let testFinished = false;
 
 describe('sc-broker failure handling and recovery', function () {
 
   before('run the server before start', async function () {
     // Set up the server to auto-relaunch on crash
-    var launchServer = () => {
+    let launchServer = () => {
       if (testFinished) {
         return;
       }
@@ -59,19 +59,19 @@ describe('sc-broker failure handling and recovery', function () {
   });
 
   it('should be able to handle failure and gracefully recover from it', function (done) {
-    var pubIntervalHandle = null;
-    var pubInterval = 1;
-    var pubTargetNum = 2000;
+    let pubIntervalHandle = null;
+    let pubInterval = 1;
+    let pubTargetNum = 2000;
 
-    var pubCount = 0;
-    var receivedCount = 0;
+    let pubCount = 0;
+    let receivedCount = 0;
 
-    var finish = () => {
+    let finish = () => {
       assert.equal(receivedCount, pubCount);
       done();
     };
 
-    var handleMessage = (channel, data) => {
+    let handleMessage = (channel, data) => {
       if (channel === 'foo') {
         receivedCount++;
 
@@ -90,9 +90,9 @@ describe('sc-broker failure handling and recovery', function () {
 
     client.subscribe('foo')
     .then(() => {
-      var doPublish = () => {
+      let doPublish = () => {
         if (pubCount < pubTargetNum) {
-          var singlePublish = (pCount) => {
+          let singlePublish = (pCount) => {
             client.publish('foo', 'hello ' + pCount)
             .catch((err) => {
               // If error, retry.

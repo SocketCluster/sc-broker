@@ -1,13 +1,13 @@
-var SCBroker = require('../../scbroker');
-var scErrors = require('sc-errors');
-var addMiddleware = require('./middleware');
+const SCBroker = require('../../scbroker');
+const scErrors = require('sc-errors');
+const addMiddleware = require('./middleware');
 
 class BrokerControllerStub extends SCBroker {
   run() {
     console.log('Start broker');
     addMiddleware(this);
 
-    var dataBuffer = [];
+    let dataBuffer = [];
 
     (async () => {
       for await (let req of this.listener('request')) {
@@ -104,11 +104,11 @@ class BrokerControllerStub extends SCBroker {
       for await (let req of this.listener('masterRequest')) {
         let data = req.data;
         if (data.sendBackError) {
-          var err = new Error('This is an error');
+          let err = new Error('This is an error');
           err.name = 'CustomBrokerError';
           req.error(err);
         } else if (!data.doNothing) {
-          var responseData = {
+          let responseData = {
             hello: data.subject
           };
           req.end(responseData);

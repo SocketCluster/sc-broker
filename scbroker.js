@@ -1,46 +1,46 @@
-var args = JSON.parse(process.argv[2]);
+const args = JSON.parse(process.argv[2]);
 
-var PORT;
+let PORT;
 if (args.port) {
   PORT = parseInt(args.port);
 }
-var BROKER_ID = args.id || 0;
-var SOCKET_PATH = args.socketPath;
-var EXPIRY_ACCURACY = args.expiryAccuracy || 1000;
-var BROKER_CONTROLLER_PATH = args.brokerControllerPath;
-var DOWNGRADE_TO_USER = args.downgradeToUser;
-var PROCESS_TERM_TIMEOUT = args.processTermTimeout || 10000;
-var DEBUG_PORT = args.debug || null;
-var INIT_CONTROLLER = null;
-var BROKER_CONTROLLER = null;
-var DEFAULT_IPC_ACK_TIMEOUT = 10000;
+const BROKER_ID = args.id || 0;
+const SOCKET_PATH = args.socketPath;
+const EXPIRY_ACCURACY = args.expiryAccuracy || 1000;
+const BROKER_CONTROLLER_PATH = args.brokerControllerPath;
+const DOWNGRADE_TO_USER = args.downgradeToUser;
+const PROCESS_TERM_TIMEOUT = args.processTermTimeout || 10000;
+const DEBUG_PORT = args.debug || null;
+const INIT_CONTROLLER = null;
+const BROKER_CONTROLLER = null;
+const DEFAULT_IPC_ACK_TIMEOUT = 10000;
 
-var brokerInitOptions = JSON.parse(process.env.brokerInitOptions);
+let brokerInitOptions = JSON.parse(process.env.brokerInitOptions);
 
-var StreamDemux = require('stream-demux');
-var async = require('async');
-var fs = require('fs');
-var uuid = require('uuid');
-var com = require('ncom');
-var ExpiryManager = require('expirymanager').ExpiryManager;
-var FlexiMap = require('fleximap').FlexiMap;
+const StreamDemux = require('stream-demux');
+const async = require('async');
+const fs = require('fs');
+const uuid = require('uuid');
+const com = require('ncom');
+const ExpiryManager = require('expirymanager').ExpiryManager;
+const FlexiMap = require('fleximap').FlexiMap;
 
-var scErrors = require('sc-errors');
-var BrokerError = scErrors.BrokerError;
-var TimeoutError = scErrors.TimeoutError;
-var InvalidArgumentsError = scErrors.InvalidArgumentsError;
-var InvalidActionError = scErrors.InvalidActionError;
+const scErrors = require('sc-errors');
+const BrokerError = scErrors.BrokerError;
+const TimeoutError = scErrors.TimeoutError;
+const InvalidArgumentsError = scErrors.InvalidArgumentsError;
+const InvalidActionError = scErrors.InvalidActionError;
 
-var initialized = {};
+let initialized = {};
 
 // Non-fatal error.
-var sendErrorToMaster = function (err) {
-  var error = scErrors.dehydrateError(err, true);
+let sendErrorToMaster = function (err) {
+  let error = scErrors.dehydrateError(err, true);
   process.send({type: 'error', data: error});
 };
 
 // Fatal error.
-var exitWithError = function (err) {
+let exitWithError = function (err) {
   sendErrorToMaster(err);
   process.exit(1);
 };
@@ -55,61 +55,55 @@ if (DOWNGRADE_TO_USER && process.setuid) {
   }
 }
 
-var send = function (socket, object, options) {
+let send = function (socket, object, options) {
   socket.write(object, options);
 };
 
-var dataMap = new FlexiMap();
-var subscriptions = {};
+let dataMap = new FlexiMap();
+let subscriptions = {};
 
-var dataExpirer = new ExpiryManager();
+let dataExpirer = new ExpiryManager();
 
-var addListener = function (socket, channel) {
+let addListener = function (socket, channel) {
   if (subscriptions[socket.id] == null) {
     subscriptions[socket.id] = {};
   }
   subscriptions[socket.id][channel] = socket;
 };
 
-var hasListener = function (socket, channel) {
+let hasListener = function (socket, channel) {
   return !!(subscriptions[socket.id] && subscriptions[socket.id][channel]);
 };
 
-var anyHasListener = function (channel) {
-  for (var i in subscriptions) {
-    if (subscriptions.hasOwnProperty(i)) {
-      if (subscriptions[i][channel]) {
-        return true;
-      }
+let anyHasListener = function (channel) {
+  let socketSubscriptions = Object.values(subscriptions || {});
+  let len = socketSubscriptions.length;
+  for (let i = 0; i < len; i++) {
+    if (socketSubscriptions[i][channel]) {
+      return true;
     }
   }
   return false;
 };
 
-var removeListener = function (socket, channel) {
+let removeListener = function (socket, channel) {
   if (subscriptions[socket.id]) {
     delete subscriptions[socket.id][channel];
   }
 };
 
-var removeAllListeners = function (socket) {
-  var subMap = subscriptions[socket.id];
-  var channels = [];
-  for (var i in subMap) {
-    if (subMap.hasOwnProperty(i)) {
-      channels.push(i);
-    }
-  }
+let removeAllListeners = function (socket) {
+  let subMap = subscriptions[socket.id];
   delete subscriptions[socket.id];
-  return channels;
+  return Object.keys(subMap || {});
 };
 
-var getSubscriptions = function (socket) {
+let getSubscriptions = function (socket) {
   return Object.keys(subscriptions[socket.id] || {});
 };
 
-var exec = function (query, baseKey) {
-  var rebasedDataMap;
+let exec = function (query, baseKey) {
+  let rebasedDataMap;
   if (baseKey) {
     rebasedDataMap = dataMap.getRaw(baseKey);
   } else {
@@ -119,15 +113,15 @@ var exec = function (query, baseKey) {
   return Function('"use strict"; return (' + query + ')(arguments[0], arguments[1], arguments[2]);')(rebasedDataMap, dataExpirer, subscriptions);
 };
 
-var pendingResponseHandlers = {};
+let pendingResponseHandlers = {};
 
 function createIPCResponseHandler(ipcAckTimeout, callback) {
-  var cid = uuid.v4();
+  let cid = uuid.v4();
 
-  var responseTimeout = setTimeout(() => {
-    var responseHandler = pendingResponseHandlers[cid];
+  let responseTimeout = setTimeout(() => {
+    let responseHandler = pendingResponseHandlers[cid];
     delete pendingResponseHandlers[cid];
-    var timeoutError = new TimeoutError('IPC response timed out');
+    let timeoutError = new TimeoutError('IPC response timed out');
     responseHandler.callback(timeoutError);
   }, ipcAckTimeout);
 
@@ -140,20 +134,20 @@ function createIPCResponseHandler(ipcAckTimeout, callback) {
 }
 
 function handleMasterResponse(message) {
-  var responseHandler = pendingResponseHandlers[message.rid];
+  let responseHandler = pendingResponseHandlers[message.rid];
   if (responseHandler) {
     clearTimeout(responseHandler.timeout);
     delete pendingResponseHandlers[message.rid];
-    var properError = scErrors.hydrateError(message.error, true);
+    let properError = scErrors.hydrateError(message.error, true);
     responseHandler.callback(properError, message.data);
   }
 }
 
-var scBroker;
+let scBroker;
 
 function SCBroker(options) {
   if (scBroker) {
-    var err = new BrokerError('Attempted to instantiate a broker which has already been instantiated');
+    let err = new BrokerError('Attempted to instantiate a broker which has already been instantiated');
     throw err;
   }
 
@@ -192,7 +186,7 @@ SCBroker.prototype._init = function (options) {
   this.secretKey = this.options.secretKey;
   this.ipcAckTimeout = this.options.ipcAckTimeout || DEFAULT_IPC_ACK_TIMEOUT;
 
-  var runResult = this.run();
+  let runResult = this.run();
   Promise.resolve(runResult)
   .then(comServerListen)
   .catch(exitWithError);
@@ -213,7 +207,7 @@ SCBroker.prototype.closeListener = function (eventName) {
 };
 
 SCBroker.prototype.sendMessageToMaster = function (data) {
-  var messagePacket = {
+  let messagePacket = {
     type: 'brokerMessage',
     brokerId: this.id,
     data: data
@@ -224,7 +218,7 @@ SCBroker.prototype.sendMessageToMaster = function (data) {
 
 SCBroker.prototype.sendRequestToMaster = function (data) {
   return new Promise((resolve, reject) => {
-    var messagePacket = {
+    let messagePacket = {
       type: 'brokerRequest',
       brokerId: this.id,
       data: data
@@ -245,22 +239,21 @@ SCBroker.prototype.exec = function (query, baseKey) {
 };
 
 SCBroker.prototype.publish = function (channel, message) {
-  var sock;
-  for (var i in subscriptions) {
-    if (subscriptions.hasOwnProperty(i)) {
-      sock = subscriptions[i][channel];
-      if (sock && sock instanceof com.ComSocket) {
-        send(sock, {type: 'message', channel: channel, value: message}, pubSubOptions);
-      }
+  let sock;
+  let socketSubscriptions = Object.values(subscriptions || {});
+  socketSubscriptions.forEach((subs) => {
+    sock = subs[channel];
+    if (sock) {
+      send(sock, {type: 'message', channel: channel, value: message}, pubSubOptions);
     }
-  }
+  });
 };
 
 SCBroker.prototype._passThroughMiddleware = function (command, socket, cb) {
-  var action = command.action;
-  var callbackInvoked = false;
+  let action = command.action;
+  let callbackInvoked = false;
 
-  var applyEachMiddleware = (type, req, cb) => {
+  let applyEachMiddleware = (type, req, cb) => {
     async.applyEachSeries(this._middleware[type], req, (err) => {
       if (callbackInvoked) {
         this.emit('warning', {
@@ -274,10 +267,10 @@ SCBroker.prototype._passThroughMiddleware = function (command, socket, cb) {
   }
 
   if (action === 'subscribe') {
-    var req = { socket: socket, channel: command.channel };
+    let req = {socket, channel: command.channel};
     applyEachMiddleware(this.MIDDLEWARE_SUBSCRIBE, req, cb);
   } else if (action === 'publish') {
-    var req = { socket: socket, channel: command.channel, command: command };
+    let req = {socket, channel: command.channel, command};
     applyEachMiddleware(this.MIDDLEWARE_PUBLISH_IN, req, cb);
   } else {
     cb(null);
@@ -293,7 +286,7 @@ SCBroker.prototype.addMiddleware = function (type, middleware) {
 }
 
 SCBroker.prototype.removeMiddleware = function (type, middleware) {
-  var middlewareFunctions = this._middleware[type];
+  let middlewareFunctions = this._middleware[type];
   if (!middlewareFunctions) {
     throw new InvalidArgumentsError(`Middleware type "${type}" is not supported`);
   }
@@ -303,29 +296,29 @@ SCBroker.prototype.removeMiddleware = function (type, middleware) {
   });
 };
 
-var pubSubOptions = {
+let pubSubOptions = {
   batch: true
 };
 
-var actions = {
+let actions = {
   init: function (command, socket) {
-    var brokerInfo = {
+    let brokerInfo = {
       id: BROKER_ID,
       pid: process.pid
     };
-    var result = {id: command.id, type: 'response', action: 'init', value: brokerInfo};
+    let result = {id: command.id, type: 'response', action: 'init', value: brokerInfo};
     if (scBroker.secretKey == null || command.secretKey === scBroker.secretKey) {
       initialized[socket.id] = {};
     } else {
-      var err = new BrokerError('Invalid password was supplied to the broker');
+      let err = new BrokerError('Invalid password was supplied to the broker');
       result.error = scErrors.dehydrateError(err, true);
     }
     send(socket, result);
   },
 
   set: function (command, socket) {
-    var result = scBroker.dataMap.set(command.key, command.value);
-    var response = {id: command.id, type: 'response', action: 'set'};
+    let result = scBroker.dataMap.set(command.key, command.value);
+    let response = {id: command.id, type: 'response', action: 'set'};
     if (command.getValue) {
       response.value = result;
     }
@@ -334,28 +327,28 @@ var actions = {
 
   expire: function (command, socket) {
     scBroker.dataExpirer.expire(command.keys, command.value);
-    var response = {id: command.id, type: 'response', action: 'expire'};
+    let response = {id: command.id, type: 'response', action: 'expire'};
     send(socket, response);
   },
 
   unexpire: function (command, socket) {
     scBroker.dataExpirer.unexpire(command.keys);
-    var response = {id: command.id, type: 'response', action: 'unexpire'};
+    let response = {id: command.id, type: 'response', action: 'unexpire'};
     send(socket, response);
   },
 
   getExpiry: function (command, socket) {
-    var response = {id: command.id, type: 'response', action: 'getExpiry', value: scBroker.dataExpirer.getExpiry(command.key)};
+    let response = {id: command.id, type: 'response', action: 'getExpiry', value: scBroker.dataExpirer.getExpiry(command.key)};
     send(socket, response);
   },
 
   get: function (command, socket) {
-    var result = scBroker.dataMap.get(command.key);
+    let result = scBroker.dataMap.get(command.key);
     send(socket, {id: command.id, type: 'response', action: 'get', value: result});
   },
 
   getRange: function (command, socket) {
-    var result = scBroker.dataMap.getRange(command.key, command.fromIndex, command.toIndex);
+    let result = scBroker.dataMap.getRange(command.key, command.fromIndex, command.toIndex);
     send(socket, {id: command.id, type: 'response', action: 'getRange', value: result});
   },
 
@@ -364,19 +357,19 @@ var actions = {
   },
 
   count: function (command, socket) {
-    var result = scBroker.dataMap.count(command.key);
+    let result = scBroker.dataMap.count(command.key);
     send(socket, {id: command.id, type: 'response', action: 'count', value: result});
   },
 
   add: function (command, socket) {
-    var result = scBroker.dataMap.add(command.key, command.value);
-    var response = {id: command.id, type: 'response', action: 'add', value: result};
+    let result = scBroker.dataMap.add(command.key, command.value);
+    let response = {id: command.id, type: 'response', action: 'add', value: result};
     send(socket, response);
   },
 
   concat: function (command, socket) {
-    var result = scBroker.dataMap.concat(command.key, command.value);
-    var response = {id: command.id, type: 'response', action: 'concat'};
+    let result = scBroker.dataMap.concat(command.key, command.value);
+    let response = {id: command.id, type: 'response', action: 'concat'};
     if (command.getValue) {
       response.value = result;
     }
@@ -384,7 +377,7 @@ var actions = {
   },
 
   registerDeathQuery: function (command, socket) {
-    var response = {id: command.id, type: 'response', action: 'registerDeathQuery'};
+    let response = {id: command.id, type: 'response', action: 'registerDeathQuery'};
 
     if (initialized[socket.id]) {
       initialized[socket.id].deathQuery = command.value;
@@ -393,14 +386,14 @@ var actions = {
   },
 
   exec: function (command, socket) {
-    var ret = {id: command.id, type: 'response', action: 'exec'};
+    let ret = {id: command.id, type: 'response', action: 'exec'};
     try {
-      var result = scBroker.exec(command.value, command.baseKey);
+      let result = scBroker.exec(command.value, command.baseKey);
       if (result !== undefined) {
         ret.value = result;
       }
     } catch (e) {
-      var queryErrorPrefix = 'Exception at exec(): ';
+      let queryErrorPrefix = 'Exception at exec(): ';
       if (typeof e === 'string') {
         e = queryErrorPrefix + e;
       } else if (typeof e.message === 'string') {
@@ -414,9 +407,9 @@ var actions = {
   },
 
   remove: function (command, socket) {
-    var result = scBroker.dataMap.remove(command.key);
+    let result = scBroker.dataMap.remove(command.key);
     if (!command.noAck) {
-      var response = {id: command.id, type: 'response', action: 'remove'};
+      let response = {id: command.id, type: 'response', action: 'remove'};
       if (command.getValue) {
         response.value = result;
       }
@@ -425,9 +418,9 @@ var actions = {
   },
 
   removeRange: function (command, socket) {
-    var result = scBroker.dataMap.removeRange(command.key, command.fromIndex, command.toIndex);
+    let result = scBroker.dataMap.removeRange(command.key, command.fromIndex, command.toIndex);
     if (!command.noAck) {
-      var response = {id: command.id, type: 'response', action: 'removeRange'};
+      let response = {id: command.id, type: 'response', action: 'removeRange'};
       if (command.getValue) {
         response.value = result;
       }
@@ -443,20 +436,20 @@ var actions = {
   },
 
   splice: function (command, socket) {
-    var args = [command.key, command.fromIndex, command.count];
+    let args = [command.key, command.fromIndex, command.count];
     if (command.items) {
       args = args.concat(command.items);
     }
     // Remove any consecutive undefined references from end of array
-    for (var i = args.length - 1; i >= 0; i--) {
+    for (let i = args.length - 1; i >= 0; i--) {
       if (args[i] !== undefined) {
         break;
       }
       args.pop();
     }
-    var result = scBroker.dataMap.splice.apply(scBroker.dataMap, args);
+    let result = scBroker.dataMap.splice.apply(scBroker.dataMap, args);
     if (!command.noAck) {
-      var response = {id: command.id, type: 'response', action: 'splice'};
+      let response = {id: command.id, type: 'response', action: 'splice'};
       if (command.getValue) {
         response.value = result;
       }
@@ -465,9 +458,9 @@ var actions = {
   },
 
   pop: function (command, socket) {
-    var result = scBroker.dataMap.pop(command.key);
+    let result = scBroker.dataMap.pop(command.key);
     if (!command.noAck) {
-      var response = {id: command.id, type: 'response', action: 'pop'};
+      let response = {id: command.id, type: 'response', action: 'pop'};
       if (command.getValue) {
         response.value = result;
       }
@@ -480,7 +473,7 @@ var actions = {
   },
 
   subscribe: function (command, socket) {
-    var hasListener = anyHasListener(command.channel);
+    let hasListener = anyHasListener(command.channel);
     addListener(socket, command.channel);
     if (!hasListener) {
       scBroker.emit('subscribe', {
@@ -493,22 +486,20 @@ var actions = {
   unsubscribe: function (command, socket) {
     if (command.channel) {
       removeListener(socket, command.channel);
-      var hasListener = anyHasListener(command.channel);
+      let hasListener = anyHasListener(command.channel);
       if (!hasListener) {
         scBroker.emit('unsubscribe', {
           channel: command.channel
         });
       }
     } else {
-      var channels = removeAllListeners(socket);
-      for (var i in channels) {
-        // TODO 2: Use forEach
-        if (channels.hasOwnProperty(i)) {
-          if (!anyHasListener(channels[i])) {
-            scBroker.emit('unsubscribe', {
-              channel: channels[i]
-            });
-          }
+      let channels = removeAllListeners(socket);
+      let len = channels.length;
+      for (let i = 0; i < len; i++) {
+        if (!anyHasListener(channels[i])) {
+          scBroker.emit('unsubscribe', {
+            channel: channels[i]
+          });
         }
       }
     }
@@ -516,18 +507,18 @@ var actions = {
   },
 
   isSubscribed: function (command, socket) {
-    var result = hasListener(socket, command.channel);
+    let result = hasListener(socket, command.channel);
     send(socket, {id: command.id, type: 'response', action: 'isSubscribed', channel: command.channel, value: result}, pubSubOptions);
   },
 
   subscriptions: function (command, socket) {
-    var result = getSubscriptions(socket);
+    let result = getSubscriptions(socket);
     send(socket, {id: command.id, type: 'response', action: 'subscriptions', value: result}, pubSubOptions);
   },
 
   publish: function (command, socket) {
     scBroker.publish(command.channel, command.value);
-    var response = {id: command.id, type: 'response', action: 'publish', channel: command.channel};
+    let response = {id: command.id, type: 'response', action: 'publish', channel: command.channel};
     if (command.getValue) {
       response.value = command.value;
     }
@@ -565,19 +556,19 @@ var actions = {
   }
 };
 
-var MAX_ID = Math.pow(2, 53) - 2;
-var curID = 1;
+let MAX_ID = Math.pow(2, 53) - 2;
+let curID = 1;
 
-var genID = function () {
+let genID = function () {
   curID++;
   curID = curID % MAX_ID;
   return curID;
 };
 
-var comServer = com.createServer();
-var connections = {};
+let comServer = com.createServer();
+let connections = {};
 
-var handleConnection = function (sock) {
+let handleConnection = function (sock) {
   sock.on('error', sendErrorToMaster);
   sock.id = genID();
 
@@ -598,7 +589,7 @@ var handleConnection = function (sock) {
         }
       });
     } else {
-      var err = new BrokerError('Cannot process command before init handshake');
+      let err = new BrokerError('Cannot process command before init handshake');
       err = scErrors.dehydrateError(err, true);
       send(sock, {id: command.id, type: 'response', action: command.action, error: err});
     }
@@ -613,14 +604,13 @@ var handleConnection = function (sock) {
       }
       delete initialized[sock.id];
     }
-    var channels = removeAllListeners(sock);
-    for (var i in channels) {
-      if (channels.hasOwnProperty(i)) {
-        if (!anyHasListener(channels[i])) {
-          scBroker.emit('unsubscribe', {
-            channel: channels[i]
-          });
-        }
+    let channels = removeAllListeners(sock);
+    let len = channels.length;
+    for (let i = 0; i < len; i++) {
+      if (!anyHasListener(channels[i])) {
+        scBroker.emit('unsubscribe', {
+          channel: channels[i]
+        });
       }
     }
   });
@@ -629,7 +619,7 @@ var handleConnection = function (sock) {
 comServer.on('connection', handleConnection);
 
 comServer.on('listening', function () {
-  var brokerInfo = {
+  let brokerInfo = {
     id: BROKER_ID,
     pid: process.pid
   };
@@ -639,7 +629,7 @@ comServer.on('listening', function () {
   });
 });
 
-var comServerListen = function () {
+let comServerListen = function () {
   if (SOCKET_PATH) {
     if (process.platform !== 'win32' && fs.existsSync(SOCKET_PATH)) {
       fs.unlinkSync(SOCKET_PATH)
@@ -658,9 +648,9 @@ process.on('message', function (m) {
           data: m.data
         });
       } else {
-        var errorMessage = 'Cannot send message to broker with id ' + BROKER_ID +
+        let errorMessage = 'Cannot send message to broker with id ' + BROKER_ID +
         ' because the broker was not instantiated';
-        var err = new BrokerError(errorMessage);
+        let err = new BrokerError(errorMessage);
         sendErrorToMaster(err);
       }
     } else if (m.type === 'masterRequest') {
@@ -685,9 +675,9 @@ process.on('message', function (m) {
           }
         });
       } else {
-        var errorMessage = 'Cannot send request to broker with id ' + BROKER_ID +
+        let errorMessage = 'Cannot send request to broker with id ' + BROKER_ID +
         ' because the broker was not instantiated';
-        var err = new BrokerError(errorMessage);
+        let err = new BrokerError(errorMessage);
         sendErrorToMaster(err);
       }
     } else if (m.type === 'masterResponse') {
@@ -696,16 +686,14 @@ process.on('message', function (m) {
   }
 });
 
-var killServer = function () {
+let killServer = function () {
   comServer.close(() => {
     process.exit();
   });
 
-  for (var i in connections) {
-    if (connections.hasOwnProperty(i)) {
-      connections[i].destroy();
-    }
-  }
+  Object.values(connections || {}).forEach((conn) => {
+    conn.destroy();
+  });
 
   setTimeout(() => {
     process.exit();
@@ -716,9 +704,9 @@ process.on('SIGTERM', killServer);
 process.on('disconnect', killServer);
 
 setInterval(() => {
-  var keys = dataExpirer.extractExpiredKeys();
-  var len = keys.length;
-  for (var i = 0; i < len; i++) {
+  let keys = dataExpirer.extractExpiredKeys();
+  let len = keys.length;
+  for (let i = 0; i < len; i++) {
     dataMap.remove(keys[i]);
   }
 }, EXPIRY_ACCURACY);

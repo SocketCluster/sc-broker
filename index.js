@@ -1,23 +1,22 @@
-// TODO 2: Use const and let instead of var
-var fork = require('child_process').fork;
-var StreamDemux = require('stream-demux');
-var ComSocket = require('ncom').ComSocket;
-var FlexiMap = require('fleximap').FlexiMap;
-var uuid = require('uuid');
+const fork = require('child_process').fork;
+const StreamDemux = require('stream-demux');
+const ComSocket = require('ncom').ComSocket;
+const FlexiMap = require('fleximap').FlexiMap;
+const uuid = require('uuid');
 
-var scErrors = require('sc-errors');
-var BrokerError = scErrors.BrokerError;
-var TimeoutError = scErrors.TimeoutError;
+const scErrors = require('sc-errors');
+const BrokerError = scErrors.BrokerError;
+const TimeoutError = scErrors.TimeoutError;
 
-var DEFAULT_PORT = 9435;
-var HOST = '127.0.0.1';
-var DEFAULT_CONNECT_RETRY_ERROR_THRESHOLD = 20;
-var DEFAULT_IPC_ACK_TIMEOUT = 10000;
+const DEFAULT_PORT = 9435;
+const HOST = '127.0.0.1';
+const DEFAULT_CONNECT_RETRY_ERROR_THRESHOLD = 20;
+const DEFAULT_IPC_ACK_TIMEOUT = 10000;
 
 function Server(options) {
-  var defaultBrokerControllerPath = __dirname + '/default-broker-controller.js';
+  let defaultBrokerControllerPath = __dirname + '/default-broker-controller.js';
 
-  var serverOptions = {
+  let serverOptions = {
     id: options.id,
     debug: options.debug,
     socketPath: options.socketPath,
@@ -33,7 +32,7 @@ function Server(options) {
 
   this._pendingResponseHandlers = {};
 
-  var stringArgs = JSON.stringify(serverOptions);
+  let stringArgs = JSON.stringify(serverOptions);
 
   this.socketPath = options.socketPath;
   if (!this.socketPath) {
@@ -52,14 +51,14 @@ function Server(options) {
   options.brokerOptions.secretKey = options.secretKey;
   options.brokerOptions.instanceId = options.instanceId;
 
-  var debugRegex = /^--debug(=[0-9]*)?$/;
-  var debugBrkRegex = /^--debug-brk(=[0-9]*)?$/;
-  var inspectRegex = /^--inspect(=[0-9]*)?$/;
-  var inspectBrkRegex = /^--inspect-brk(=[0-9]*)?$/;
+  let debugRegex = /^--debug(=[0-9]*)?$/;
+  let debugBrkRegex = /^--debug-brk(=[0-9]*)?$/;
+  let inspectRegex = /^--inspect(=[0-9]*)?$/;
+  let inspectBrkRegex = /^--inspect-brk(=[0-9]*)?$/;
 
   // Brokers should not inherit the master --debug argument
   // because they have their own --debug-brokers option.
-  var execOptions = {
+  let execOptions = {
     execArgv: process.execArgv.filter((arg) => {
       return !debugRegex.test(arg) && !debugBrkRegex.test(arg) && !inspectRegex.test(arg) && !inspectBrkRegex.test(arg);
     }),
@@ -80,8 +79,8 @@ function Server(options) {
 
   this._server = fork(serverOptions.brokerControllerPath, [stringArgs], execOptions);
 
-  var formatError = (error) => {
-    var err = scErrors.hydrateError(error, true);
+  let formatError = (error) => {
+    let err = scErrors.hydrateError(error, true);
     if (typeof err === 'object') {
       if (err.name == null || err.name === 'Error') {
         err.name = 'BrokerError';
@@ -92,13 +91,13 @@ function Server(options) {
   };
 
   this._server.on('error', (err) => {
-    var error = formatError(err);
+    let error = formatError(err);
     this.emit('error', {error});
   });
 
   this._server.on('message', (value) => {
     if (value.type === 'error') {
-      var error = formatError(value.data);
+      let error = formatError(value.data);
       this.emit('error', {error});
     } else if (value.type === 'brokerMessage') {
       this.emit('brokerMessage', {
@@ -125,11 +124,11 @@ function Server(options) {
         }
       });
     } else if (value.type === 'brokerResponse') {
-      var responseHandler = this._pendingResponseHandlers[value.rid];
+      let responseHandler = this._pendingResponseHandlers[value.rid];
       if (responseHandler) {
         clearTimeout(responseHandler.timeout);
         delete this._pendingResponseHandlers[value.rid];
-        var properError = scErrors.hydrateError(value.error, true);
+        let properError = scErrors.hydrateError(value.error, true);
         responseHandler.callback(properError, value.data);
       }
     } else if (value.type === 'listening') {
@@ -147,12 +146,12 @@ function Server(options) {
   });
 
   this._createIPCResponseHandler = (callback) => {
-    var cid = uuid.v4();
+    let cid = uuid.v4();
 
-    var responseTimeout = setTimeout(() => {
-      var responseHandler = this._pendingResponseHandlers[cid];
+    let responseTimeout = setTimeout(() => {
+      let responseHandler = this._pendingResponseHandlers[cid];
       delete this._pendingResponseHandlers[cid];
-      var timeoutError = new TimeoutError('IPC response timed out');
+      let timeoutError = new TimeoutError('IPC response timed out');
       responseHandler.callback(timeoutError);
     }, this.ipcAckTimeout);
 
@@ -178,7 +177,7 @@ Server.prototype.closeListener = function (eventName) {
 };
 
 Server.prototype.sendMessageToBroker = function (data) {
-  var messagePacket = {
+  let messagePacket = {
     type: 'masterMessage',
     data: data
   };
@@ -188,7 +187,7 @@ Server.prototype.sendMessageToBroker = function (data) {
 
 Server.prototype.sendRequestToBroker = function (data) {
   return new Promise((resolve, reject) => {
-    var messagePacket = {
+    let messagePacket = {
       type: 'masterRequest',
       data: data
     };
@@ -218,8 +217,8 @@ module.exports.createServer = function (options) {
 };
 
 function Client(options) {
-  var secretKey = options.secretKey || null;
-  var timeout = options.timeout;
+  let secretKey = options.secretKey || null;
+  let timeout = options.timeout;
 
   this._listenerDemux = new StreamDemux();
 
@@ -238,7 +237,7 @@ function Client(options) {
       options.autoReconnectOptions = {};
     }
 
-    var reconnectOptions = options.autoReconnectOptions;
+    let reconnectOptions = options.autoReconnectOptions;
     if (reconnectOptions.initialDelay == null) {
       reconnectOptions.initialDelay = 200;
     }
@@ -282,7 +281,7 @@ function Client(options) {
   this.pendingReconnect = false;
   this.pendingReconnectTimeout = null;
 
-  var createSocket = () => {
+  let createSocket = () => {
     if (this._socket) {
       this._socket.removeAllListeners();
     }
@@ -294,8 +293,8 @@ function Client(options) {
 
     this._socket.on('connect', this._connectHandler);
     this._socket.on('error', (error) => {
-      var isConnectionFailure = error.code === 'ENOENT' || error.code === 'ECONNREFUSED';
-      var isBelowRetryThreshold = this.connectAttempts < this.connectRetryErrorThreshold;
+      let isConnectionFailure = error.code === 'ENOENT' || error.code === 'ECONNREFUSED';
+      let isBelowRetryThreshold = this.connectAttempts < this.connectRetryErrorThreshold;
 
       // We can tolerate a few missed reconnections without emitting a full error.
       if (isConnectionFailure && isBelowRetryThreshold && error.address === options.socketPath) {
@@ -307,18 +306,18 @@ function Client(options) {
     this._socket.on('close', handleDisconnection);
     this._socket.on('end', handleDisconnection);
     this._socket.on('message', (packet) => {
-      var id = packet.id;
-      var rawError = packet.error;
-      var error = null;
+      let id = packet.id;
+      let rawError = packet.error;
+      let error = null;
       if (rawError != null) {
         error = scErrors.hydrateError(rawError, true);
       }
       if (packet.type === 'response') {
         if (this._commandTracker.hasOwnProperty(id)) {
           clearTimeout(this._commandTracker[id].timeout);
-          var action = packet.action;
+          let action = packet.action;
 
-          var callback = this._commandTracker[id].callback;
+          let callback = this._commandTracker[id].callback;
           delete this._commandTracker[id];
 
           if (packet.value !== undefined) {
@@ -343,12 +342,12 @@ function Client(options) {
   this.MAX_ID = Math.pow(2, 53) - 2;
 
   this._tryReconnect = (initialDelay) => {
-    var exponent = this.connectAttempts++;
-    var reconnectOptions = this.autoReconnectOptions;
-    var timeout;
+    let exponent = this.connectAttempts++;
+    let reconnectOptions = this.autoReconnectOptions;
+    let timeout;
 
     if (initialDelay == null || exponent > 0) {
-      var initialTimeout = Math.round(reconnectOptions.initialDelay + (reconnectOptions.randomness || 0) * Math.random());
+      let initialTimeout = Math.round(reconnectOptions.initialDelay + (reconnectOptions.randomness || 0) * Math.random());
 
       timeout = Math.round(initialTimeout * Math.pow(reconnectOptions.multiplier, exponent));
     } else {
@@ -374,9 +373,9 @@ function Client(options) {
   };
 
   this._flushPendingSubscriptionBuffers = () => {
-    var subBufLen = this._pendingSubscriptionBuffer.length;
-    for (var i = 0; i < subBufLen; i++) {
-      var subCommandData = this._pendingSubscriptionBuffer[i];
+    let subBufLen = this._pendingSubscriptionBuffer.length;
+    for (let i = 0; i < subBufLen; i++) {
+      let subCommandData = this._pendingSubscriptionBuffer[i];
       this._execCommand(subCommandData.command, subCommandData.options);
     }
     this._pendingSubscriptionBuffer = [];
@@ -385,9 +384,9 @@ function Client(options) {
   this._flushPendingBuffers = () => {
     this._flushPendingSubscriptionBuffers();
 
-    var bufLen = this._pendingBuffer.length;
-    for (var j = 0; j < bufLen; j++) {
-      var commandData = this._pendingBuffer[j];
+    let bufLen = this._pendingBuffer.length;
+    for (let j = 0; j < bufLen; j++) {
+      let commandData = this._pendingBuffer[j];
       this._execCommand(commandData.command, commandData.options);
     }
     this._pendingBuffer = [];
@@ -411,11 +410,11 @@ function Client(options) {
       return;
     }
     command.id = this._genID();
-    var request = {callback: callback};
+    let request = {callback: callback};
     this._commandTracker[command.id] = request;
 
     request.timeout = setTimeout(() => {
-      var error = new TimeoutError('Broker Error - The ' + command.action + ' action timed out');
+      let error = new TimeoutError('Broker Error - The ' + command.action + ' action timed out');
       delete request.callback;
       if (this._commandTracker.hasOwnProperty(command.id)) {
         delete this._commandTracker[command.id];
@@ -426,7 +425,7 @@ function Client(options) {
 
   this._bufferSubscriptionCommand = (command, callback, options) => {
     this._prepareAndTrackCommand(command, callback);
-    var commandData = {
+    let commandData = {
       command: command,
       options: options
     };
@@ -437,7 +436,7 @@ function Client(options) {
     this._prepareAndTrackCommand(command, callback);
     // Clone the command argument to prevent the user from modifying the data
     // whilst the command is still pending in the buffer.
-    var commandData = {
+    let commandData = {
       command: JSON.parse(JSON.stringify(command)),
       options: options
     };
@@ -460,10 +459,10 @@ function Client(options) {
 
   // Recovers subscriptions after Broker server crash
   this._resubscribeAll = () => {
-    var subscribePromises = Object.keys(this._subscriptionMap || {}).map((channel) => {
+    let subscribePromises = Object.keys(this._subscriptionMap || {}).map((channel) => {
       return this.subscribe(channel)
       .catch((err) => {
-        var errorMessage = err.message || err;
+        let errorMessage = err.message || err;
         this.emit('error', {
           error: new BrokerError('Failed to resubscribe to broker channel - ' + errorMessage)
         });
@@ -473,11 +472,11 @@ function Client(options) {
   };
 
   this._connectHandler = () => {
-    var command = {
+    let command = {
       action: 'init',
       secretKey: secretKey
     };
-    var initHandler = (error, brokerInfo) => {
+    let initHandler = (error, brokerInfo) => {
       if (error) {
         this.emit('error', {error});
       } else {
@@ -510,7 +509,7 @@ function Client(options) {
     }
   };
 
-  var handleDisconnection = () => {
+  let handleDisconnection = () => {
     this.state = this.DISCONNECTED;
     this.pendingReconnect = false;
     this.pendingReconnectTimeout = null;
@@ -527,7 +526,7 @@ function Client(options) {
   };
 
   this._getPubSubExecOptions = () => {
-    var execOptions = {};
+    let execOptions = {};
     if (options.pubSubBatchDuration != null) {
       execOptions.batch = true;
     }
@@ -537,14 +536,14 @@ function Client(options) {
   this._stringifyQuery = (query, data) => {
     query = query.toString();
 
-    var validVarNameRegex = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
-    var headerString = '';
+    let validVarNameRegex = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+    let headerString = '';
 
     Object.keys(data || {}).forEach((i) => {
       if (!validVarNameRegex.test(i)) {
         throw new BrokerError("The variable name '" + i + "' is invalid");
       }
-      headerString += 'var ' + i + '=' + JSON.stringify(data[i]) + ';';
+      headerString += 'let ' + i + '=' + JSON.stringify(data[i]) + ';';
     });
 
     query = query.replace(/^(function *[(][^)]*[)] *{)/, (match) => {
@@ -585,11 +584,11 @@ Client.prototype.subscribe = function (channel) {
   return new Promise((resolve, reject) => {
     this._subscriptionMap[channel] = true;
 
-    var command = {
+    let command = {
       action: 'subscribe',
       channel: channel
     };
-    var callback = (err) => {
+    let callback = (err) => {
       if (err) {
         delete this._subscriptionMap[channel];
         reject(err);
@@ -597,7 +596,7 @@ Client.prototype.subscribe = function (channel) {
       }
       resolve();
     };
-    var execOptions = this._getPubSubExecOptions();
+    let execOptions = this._getPubSubExecOptions();
 
     this._connect();
     this._bufferSubscriptionCommand(command, callback, execOptions);
@@ -609,12 +608,12 @@ Client.prototype.unsubscribe = function (channel) {
   return new Promise((resolve, reject) => {
     delete this._subscriptionMap[channel];
     if (this.state === this.CONNECTED) {
-      var command = {
+      let command = {
         action: 'unsubscribe',
         channel: channel
       };
 
-      var callback = (err) => {
+      let callback = (err) => {
         // Unsubscribe can never fail because TCP guarantees
         // delivery for the life of the connection. If the
         // connection fails then all subscriptions
@@ -622,7 +621,7 @@ Client.prototype.unsubscribe = function (channel) {
         resolve();
       };
 
-      var execOptions = this._getPubSubExecOptions();
+      let execOptions = this._getPubSubExecOptions();
       this._bufferSubscriptionCommand(command, callback, execOptions);
       this._flushPendingSubscriptionBuffersIfConnected();
     } else {
@@ -634,38 +633,38 @@ Client.prototype.unsubscribe = function (channel) {
 };
 
 Client.prototype.subscriptions = function () {
-  var command = {
+  let command = {
     action: 'subscriptions'
   };
 
-  var execOptions = this._getPubSubExecOptions();
+  let execOptions = this._getPubSubExecOptions();
   return this._processCommand(command, execOptions);
 };
 
 Client.prototype.isSubscribed = function (channel) {
-  var command = {
+  let command = {
     action: 'isSubscribed',
     channel: channel
   };
 
-  var execOptions = this._getPubSubExecOptions();
+  let execOptions = this._getPubSubExecOptions();
   return this._processCommand(command, execOptions);
 };
 
 Client.prototype.publish = function (channel, value) {
-  var command = {
+  let command = {
     action: 'publish',
     channel: channel,
     value: value,
     getValue: 1
   };
 
-  var execOptions = this._getPubSubExecOptions();
+  let execOptions = this._getPubSubExecOptions();
   return this._processCommand(command, execOptions);
 };
 
 Client.prototype.sendRequest = function (data) {
-  var command = {
+  let command = {
     action: 'sendRequest',
     value: data
   };
@@ -674,7 +673,7 @@ Client.prototype.sendRequest = function (data) {
 };
 
 Client.prototype.sendMessage = function (data) {
-  var command = {
+  let command = {
     action: 'sendMessage',
     value: data,
     noAck: 1
@@ -688,7 +687,7 @@ Client.prototype.sendMessage = function (data) {
   Returns a Promise.
 */
 Client.prototype.set = function (key, value, options) {
-  var command = {
+  let command = {
     action: 'set',
     key: key,
     value: value
@@ -706,7 +705,7 @@ Client.prototype.set = function (key, value, options) {
   Returns a Promise.
 */
 Client.prototype.expire = function (keys, seconds) {
-  var command = {
+  let command = {
     action: 'expire',
     keys: keys,
     value: seconds
@@ -719,7 +718,7 @@ Client.prototype.expire = function (keys, seconds) {
   Returns a Promise.
 */
 Client.prototype.unexpire = function (keys) {
-  var command = {
+  let command = {
     action: 'unexpire',
     keys: keys
   };
@@ -731,7 +730,7 @@ Client.prototype.unexpire = function (keys) {
   Returns a Promise.
 */
 Client.prototype.getExpiry = function (key) {
-  var command = {
+  let command = {
     action: 'getExpiry',
     key: key
   };
@@ -743,7 +742,7 @@ Client.prototype.getExpiry = function (key) {
   Returns a Promise.
 */
 Client.prototype.add = function (key, value) {
-  var command = {
+  let command = {
     action: 'add',
     key: key,
     value: value
@@ -757,7 +756,7 @@ Client.prototype.add = function (key, value) {
   Returns a Promise.
 */
 Client.prototype.concat = function (key, value, options) {
-  var command = {
+  let command = {
     action: 'concat',
     key: key,
     value: value
@@ -775,7 +774,7 @@ Client.prototype.concat = function (key, value, options) {
   Returns a Promise.
 */
 Client.prototype.get = function (key) {
-  var command = {
+  let command = {
     action: 'get',
     key: key
   };
@@ -788,7 +787,7 @@ Client.prototype.get = function (key) {
   Returns a Promise.
 */
 Client.prototype.getRange = function (key, options) {
-  var command = {
+  let command = {
     action: 'getRange',
     key: key
   };
@@ -810,7 +809,7 @@ Client.prototype.getRange = function (key, options) {
   Returns a Promise.
 */
 Client.prototype.getAll = function () {
-  var command = {
+  let command = {
     action: 'getAll'
   };
   return this._processCommand(command);
@@ -821,7 +820,7 @@ Client.prototype.getAll = function () {
   Returns a Promise.
 */
 Client.prototype.count = function (key) {
-  var command = {
+  let command = {
     action: 'count',
     key: key
   };
@@ -839,7 +838,7 @@ Client.prototype.registerDeathQuery = function (query, data) {
 
   query = this._stringifyQuery(query, data);
 
-  var command = {
+  let command = {
     action: 'registerDeathQuery',
     value: query
   };
@@ -852,7 +851,7 @@ Client.prototype.registerDeathQuery = function (query, data) {
 */
 Client.prototype.exec = function (query, options) {
   options = options || {};
-  var data;
+  let data;
 
   if (options.data) {
     data = options.data;
@@ -862,7 +861,7 @@ Client.prototype.exec = function (query, options) {
 
   query = this._stringifyQuery(query, data);
 
-  var command = {
+  let command = {
     action: 'exec',
     value: query
   };
@@ -882,7 +881,7 @@ Client.prototype.exec = function (query, options) {
   Returns a Promise.
 */
 Client.prototype.query = function (query, data) {
-  var options = {
+  let options = {
     data: data
   };
   return this.exec(query, options);
@@ -893,7 +892,7 @@ Client.prototype.query = function (query, data) {
   Returns a Promise.
 */
 Client.prototype.remove = function (key, options) {
-  var command = {
+  let command = {
     action: 'remove',
     key: key
   };
@@ -915,7 +914,7 @@ Client.prototype.remove = function (key, options) {
   Returns a Promise.
 */
 Client.prototype.removeRange = function (key, options) {
-  var command = {
+  let command = {
     action: 'removeRange',
     key: key
   };
@@ -943,7 +942,7 @@ Client.prototype.removeRange = function (key, options) {
   Returns a Promise.
 */
 Client.prototype.removeAll = function () {
-  var command = {
+  let command = {
     action: 'removeAll'
   };
   return this._processCommand(command);
@@ -958,7 +957,7 @@ Client.prototype.removeAll = function () {
   Returns a Promise.
 */
 Client.prototype.splice = function (key, options) {
-  var command = {
+  let command = {
     action: 'splice',
     key: key
   };
@@ -989,7 +988,7 @@ Client.prototype.splice = function (key, options) {
   Returns a Promise.
 */
 Client.prototype.pop = function (key, options) {
-  var command = {
+  let command = {
     action: 'pop',
     key: key
   };
@@ -1011,7 +1010,7 @@ Client.prototype.pop = function (key, options) {
   Returns a Promise.
 */
 Client.prototype.hasKey = function (key) {
-  var command = {
+  let command = {
     action: 'hasKey',
     key: key
   };
@@ -1027,7 +1026,7 @@ Client.prototype.end = function () {
   return this.unsubscribe()
   .then(() => {
     return new Promise((resolve, reject) => {
-      var disconnectCallback = () => {
+      let disconnectCallback = () => {
         if (disconnectTimeout) {
           clearTimeout(disconnectTimeout);
         }
@@ -1037,9 +1036,9 @@ Client.prototype.end = function () {
         this._socket.removeListener('end', disconnectCallback);
       };
 
-      var disconnectTimeout = setTimeout(() => {
+      let disconnectTimeout = setTimeout(() => {
         this._socket.removeListener('end', disconnectCallback);
-        var error = new TimeoutError('Disconnection timed out');
+        let error = new TimeoutError('Disconnection timed out');
         reject(error);
       }, this._timeout);
 
@@ -1048,7 +1047,7 @@ Client.prototype.end = function () {
       } else {
         disconnectCallback();
       }
-      var setDisconnectStatus = () => {
+      let setDisconnectStatus = () => {
         this._socket.removeListener('end', setDisconnectStatus);
         this.state = this.DISCONNECTED;
       };

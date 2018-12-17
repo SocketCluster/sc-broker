@@ -15,7 +15,7 @@ npm install sc-broker
 To use it call:
 
 ```js
-var scBroker = require('sc-broker');
+const scBroker = require('sc-broker');
 ```
 
 Firstly, launch a new *scBroker* server. If you're using the node cluster module,
@@ -27,7 +27,7 @@ then interact with it using *scBroker* clients.
 To launch the **server**, use:
 
 ```js
-var dataServer = scBroker.createServer({port: 9000, secretKey: 'mySecretKey'})
+let dataServer = scBroker.createServer({port: 9000, secretKey: 'mySecretKey'})
 ```
 
 The ```secretKey``` argument is optional; you should use it if you want to
@@ -42,22 +42,20 @@ Once the server is setup, you should create clients to interact with it.
 This ca be done in the following way:
 
 ```js
-var conf = {port: 9000}
+let conf = {port: 9000}
   , server = scBroker.createServer(conf);
 
-server.on('ready', function () {
-
- console.log('Server ready, create client');
- var client = scBroker.createClient(conf);
-
- // do client stuff
-
-});
+(async () => {
+  await server.listener('ready').once();
+  console.log('Server ready, create client');
+  let client = scBroker.createClient(conf);
+  // Do client stuff...
+})();
 ```
 After all the server provides a destroy function:
 
 ```js
-server.destroy()
+server.destroy();
 ```
 
 ## Client
@@ -65,7 +63,7 @@ server.destroy()
 To create a **client** use:
 
 ```js
-var dataClient = scBroker.createClient({port: 9000, secretKey: 'mySecretKey'});
+let dataClient = scBroker.createClient({port: 9000, secretKey: 'mySecretKey'});
 ```
 
 The ```port``` and ```secretKey``` must match those supplied to the
@@ -93,7 +91,7 @@ most flexibility. Returns a Promise; on success resolves to the return value of 
 **Example:**
 
 ```js
-var queryFn = function (DataMap) {
+let queryFn = function (DataMap) {
     // The myMessage variable comes from queryFn.data
     DataMap.set(['main', 'message'], myMessage);
     return DataMap.get(['main']);
@@ -249,9 +247,11 @@ Watch a ```channel``` on *scBroker*. This is the *scBroker* equivalent to
 [Redis' ```subscribe()```](http://redis.io/commands/subscribe). When an event
 happens on any watched channel, you can handle it using
 ```js
-scBrokerClient.on('message', function (channel, data) {
+(async () => {
+  for await (let {channel, data} of scBrokerClient.listener('message')) {
     // ...
-})
+  }
+})();
 ```
 Returns a Promise.
 
@@ -301,18 +301,18 @@ Returns a Promise.
 After starting the server (*server.js*):
 
 ```js
-var scBroker = require('sc-broker');
-var dss = scBroker.createServer({port: 9000});
+const scBroker = require('sc-broker');
+let dss = scBroker.createServer({port: 9000});
 ```
 
 a first client (*client1.js*) can subscribe to channel ```foo``` and listen
 to ```messages```:
 
 ```js
-var scBroker = require('sc-broker');
-var dc = scBroker.createClient({port: 9000});
-var ch = 'foo';
-var onMsgFn = function (ch, data) {
+const scBroker = require('sc-broker');
+let dc = scBroker.createClient({port: 9000});
+let ch = 'foo';
+let onMsgFn = function (ch, data) {
   console.log('message on channel ' + ch);
   console.log('data:');
   console.log(data);
@@ -323,18 +323,23 @@ dc.subscribe(ch)
 })
 .catch((err) => {
   console.error(err);
-})
-dc.on('message', onMsgFn)
+});
+
+(async () => {
+  for await (let {channel, data} of dc.listener('message')) {
+    onMsgFn(channel, data);
+  }
+})();
 ```
 
 If a second client (*client2.js*) publishes a message, the first client will
 execute the ```onMsgFn``` function:
 
 ```js
-var scBroker = require('sc-broker');
-var dc = scBroker.createClient({port: 9000});
-var data = {a: 'b'};
-var ch = 'foo';
+const scBroker = require('sc-broker');
+let dc = scBroker.createClient({port: 9000});
+let data = {a: 'b'};
+let ch = 'foo';
 
 dc.publish(ch,data)
 .then(() => {

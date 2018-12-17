@@ -1,8 +1,8 @@
-var _ = require('underscore');
-var scBroker = require('../index');
-var assert = require('assert');
+const _ = require('underscore');
+const scBroker = require('../index');
+const assert = require('assert');
 
-var conf = {
+let conf = {
   port: 9002,
   timeout: 2000,
   ipcAckTimeout: 1000,
@@ -17,16 +17,16 @@ if (process.env.TEST_TYPE === 'es6') {
   conf.brokerControllerPath = __dirname + '/stubs/broker-controller-stub.js';
 }
 
-var wait = function (duration) {
+function wait(duration) {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       resolve();
     }, duration);
   });
-};
+}
 
-var server;
-var client;
+let server;
+let client;
 
 describe('sc-broker client', function () {
 
@@ -65,17 +65,17 @@ describe('sc-broker client', function () {
     it('should emit the data by value (not by reference) when recovering from lost connection', function () {
       return client.end()
       .then(() => {
-        var obj = {
+        let obj = {
           foo: 'bar'
         };
 
-        var objString = JSON.stringify(obj);
+        let objString = JSON.stringify(obj);
         return client.set('someUniqueKey', obj, true)
         .then(() => {
           return client.get('someUniqueKey');
         })
         .then((value) => {
-          var valueString = JSON.stringify(value);
+          let valueString = JSON.stringify(value);
           assert.equal(valueString, objString);
         });
 
@@ -102,14 +102,14 @@ describe('sc-broker client', function () {
     it('should be able to send a request to the broker and get a response', function () {
       return server.sendRequestToBroker({subject: 'world'})
       .then((data) => {
-        var expected = JSON.stringify({hello: 'world'});
-        var actual = JSON.stringify(data);
+        let expected = JSON.stringify({hello: 'world'});
+        let actual = JSON.stringify(data);
         assert.equal(actual, expected);
       });
     });
 
     it('should be able to send a request to the broker and get back an error if something went wrong', function () {
-      var error = null;
+      let error = null;
       return server.sendRequestToBroker({sendBackError: true})
       .catch((err) => {
         error = err;
@@ -122,7 +122,7 @@ describe('sc-broker client', function () {
     });
 
     it('should be able to send a request to the broker and timeout if broker does not respond', function () {
-      var error = null;
+      let error = null;
       return server.sendRequestToBroker({doNothing: true})
       .catch((err) => {
         error = err;
@@ -141,18 +141,18 @@ describe('sc-broker client', function () {
   });
 
   describe('broker-controller#sendRequestToMaster', function () {
-    var currentTestCallbacks = {};
+    let currentTestCallbacks = {};
 
     before('prepare message responder on master', async function () {
       (async () => {
         for await (let req of server.listener('brokerRequest')) {
           let data = req.data;
           if (data.sendBackError) {
-            var err = new Error('This is an error');
+            let err = new Error('This is an error');
             err.name = 'CustomMasterError';
             req.error(err);
           } else if (!data.doNothing) {
-            var responseData = {
+            let responseData = {
               hello: data.brokerSubject
             };
             req.end(responseData);
@@ -172,8 +172,8 @@ describe('sc-broker client', function () {
 
     it('should be able to send a message to the master and get a response', function (done) {
       currentTestCallbacks['test1'] = (err, data) => {
-        var expected = JSON.stringify({hello: 'there'});
-        var actual = JSON.stringify(data);
+        let expected = JSON.stringify({hello: 'there'});
+        let actual = JSON.stringify(data);
         assert.equal(actual, expected);
         done();
       };
@@ -213,10 +213,10 @@ describe('sc-broker client', function () {
     });
   });
 
-  var val1 = 'This is a value';
-  var path1 = ['a', 'b', 'c'];
-  var path2 = ['d', 'e', 'f'];
-  var val2 = 'append this';
+  let val1 = 'This is a value';
+  let path1 = ['a', 'b', 'c'];
+  let path2 = ['d', 'e', 'f'];
+  let val2 = 'append this';
 
   describe('client#get', function () {
     it('should provide client.get', function () {
@@ -255,11 +255,11 @@ describe('sc-broker client', function () {
     );
   });
 
-  var val3 = [1, 2, 3, 4];
-  var path3 = ['g', 'h', 'i'];
-  var path4 = ['j', 'k', 'l'];
-  var val4 = {one: 1, two: 2, three: 3};
-  var path5 = ['m', 'n', 'o'];
+  let val3 = [1, 2, 3, 4];
+  let path3 = ['g', 'h', 'i'];
+  let path4 = ['j', 'k', 'l'];
+  let val4 = {one: 1, two: 2, three: 3};
+  let path5 = ['m', 'n', 'o'];
 
   describe('client#concat', function () {
     it('should concat string values', function () {
@@ -311,12 +311,12 @@ describe('sc-broker client', function () {
   });
 
 
-  var val5 = {one: 1, two: 2, three: 3, four: 4, five: 5};
-  var path6 = ['p', 'q'];
-  var val6 = [0, 1, 2, 3, 4, 5, 6, 7, 8];
-  var expected1 = [0, 1, 2, 6, 7, 8];
-  var fromIndex = 3;
-  var toIndex = 6;
+  let val5 = {one: 1, two: 2, three: 3, four: 4, five: 5};
+  let path6 = ['p', 'q'];
+  let val6 = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  let expected1 = [0, 1, 2, 6, 7, 8];
+  let fromIndex = 3;
+  let toIndex = 6;
 
   describe('client#removeRange', function () {
     it('should remove object entries by range', function () {
@@ -328,7 +328,7 @@ describe('sc-broker client', function () {
         return client.get(path5);
       })
       .then((value) => {
-        var expected = {
+        let expected = {
           one: 1,
           three: 3,
           four: 4,
@@ -372,11 +372,11 @@ describe('sc-broker client', function () {
     it('should execute query functions', function () {
       return client.set(['one', 'two', 'three', 'four'], val1)
       .then(() => {
-        var query = function (DataMap) { return DataMap.get(['one', 'two', 'three']); };
+        let query = function (DataMap) { return DataMap.get(['one', 'two', 'three']); };
         return client.exec(query);
       })
       .then((value) => {
-        var expected = {
+        let expected = {
           four: val1
         };
         assert(JSON.stringify(value) === JSON.stringify(expected));
@@ -384,11 +384,11 @@ describe('sc-broker client', function () {
     });
 
     it('should set values over query.data', function () {
-      var obj = {
+      let obj = {
         x: 1,
         y: 2
       };
-      var query = function (DataMap) {
+      let query = function (DataMap) {
         DataMap.set('point', point);
         return DataMap.get(['point']);
       };
@@ -397,7 +397,7 @@ describe('sc-broker client', function () {
       };
       return client.exec(query)
       .then((value) => {
-        var expected = {
+        let expected = {
           x: 1,
           y: 2
         };
@@ -406,10 +406,10 @@ describe('sc-broker client', function () {
     });
   });
 
-  var arr = [0, 1, 2, 3, 4, 5, 6, 7];
-  var obj = {red: 1, green: 2, blue: 3, yellow: 4, orange: 5};
-  var path7 = ['this', 'is', 'an', 'array'];
-  var path8 = ['this', 'is', 'an', 'object'];
+  let arr = [0, 1, 2, 3, 4, 5, 6, 7];
+  let obj = {red: 1, green: 2, blue: 3, yellow: 4, orange: 5};
+  let path7 = ['this', 'is', 'an', 'array'];
+  let path8 = ['this', 'is', 'an', 'object'];
 
   describe('client#getRange', function () {
     it('should get range test1', function () {
@@ -418,7 +418,7 @@ describe('sc-broker client', function () {
         return client.getRange(path7, {fromIndex: 2, toIndex: 5});
       })
       .then((value) => {
-        var expected = [2, 3, 4];
+        let expected = [2, 3, 4];
         assert(JSON.stringify(value) === JSON.stringify(expected));
       });
     });
@@ -429,7 +429,7 @@ describe('sc-broker client', function () {
         return client.getRange(path7, {fromIndex: 4});
       })
       .then((value) => {
-        var expected = [4, 5, 6, 7];
+        let expected = [4, 5, 6, 7];
         assert(JSON.stringify(value) === JSON.stringify(expected));
       });
     });
@@ -440,7 +440,7 @@ describe('sc-broker client', function () {
         return client.getRange(path7, {fromIndex: 0, toIndex: 5});
       })
       .then((value) => {
-        var expected = [0, 1, 2, 3, 4];
+        let expected = [0, 1, 2, 3, 4];
         assert(JSON.stringify(value) === JSON.stringify(expected));
       });
     });
@@ -451,7 +451,7 @@ describe('sc-broker client', function () {
         return client.getRange(path7, {fromIndex: 4, toIndex: 15});
       })
       .then((value) => {
-        var expected = [4, 5, 6, 7];
+        let expected = [4, 5, 6, 7];
         assert(JSON.stringify(value) === JSON.stringify(expected));
       });
     });
@@ -462,7 +462,7 @@ describe('sc-broker client', function () {
         return client.getRange(path8, {fromIndex: 'green', toIndex: 'blue'});
       })
       .then((value) => {
-        var expected = {
+        let expected = {
           green: 2
         };
         assert(JSON.stringify(value) === JSON.stringify(expected));
@@ -472,7 +472,7 @@ describe('sc-broker client', function () {
     it('should get range test6', function () {
       return client.getRange(path8, {fromIndex: 'blue'})
       .then((value) => {
-        var expected = {
+        let expected = {
           blue: 3,
           yellow: 4,
           orange: 5
@@ -487,7 +487,7 @@ describe('sc-broker client', function () {
         return client.getRange(path8, {fromIndex: 'green', toIndex: 'yellow'});
       })
       .then((value) => {
-        var expected = {
+        let expected = {
           green: 2,
           blue: 3
         };
@@ -496,17 +496,17 @@ describe('sc-broker client', function () {
     });
   });
 
-  var itemsB = ['a', 'b', 'c', 'd', 'e'];
-  var itemsC = ['a', 'b', 'c', 'd', 'e'];
-  var itemsD = ['c', 'd', 'e'];
-  var itemsE = ['a', 'b'];
+  let itemsB = ['a', 'b', 'c', 'd', 'e'];
+  let itemsC = ['a', 'b', 'c', 'd', 'e'];
+  let itemsD = ['c', 'd', 'e'];
+  let itemsE = ['a', 'b'];
 
   describe('client#splice', function () {
     it('should splice values test1', function () {
-      var itemsA = ['a', 'b', 'c', 'd', 'e'];
+      let itemsA = ['a', 'b', 'c', 'd', 'e'];
       return client.set(['levelA1', 'levelA2'], itemsA)
       .then(() => {
-        var spliceOptions = {
+        let spliceOptions = {
           fromIndex: 2,
           count: 2,
           items: ['c2', 'd2']
@@ -517,7 +517,7 @@ describe('sc-broker client', function () {
         return client.get(['levelA1', 'levelA2']);
       })
       .then((value) => {
-        var expected = ['a', 'b', 'c2', 'd2', 'e'];
+        let expected = ['a', 'b', 'c2', 'd2', 'e'];
         assert(JSON.stringify(value) === JSON.stringify(expected));
       });
     });
@@ -525,7 +525,7 @@ describe('sc-broker client', function () {
     it('should splice values test2', function () {
       return client.set(['levelB1', 'levelB2'], itemsB)
       .then(() => {
-        var spliceOptions = {
+        let spliceOptions = {
           fromIndex: 2
         };
         return client.splice(['levelB1', 'levelB2'], spliceOptions);
@@ -534,7 +534,7 @@ describe('sc-broker client', function () {
         return client.get(['levelB1', 'levelB2']);
       })
       .then((value) => {
-        var expected = ['a', 'b'];
+        let expected = ['a', 'b'];
         assert(JSON.stringify(value) === JSON.stringify(expected));
       });
     });
@@ -542,7 +542,7 @@ describe('sc-broker client', function () {
     it('should splice values test3', function () {
       return client.set(['levelC1', 'levelC2'], itemsC)
       .then(() => {
-        var spliceOptions = {
+        let spliceOptions = {
           count: 3
         };
         return client.splice(['levelC1', 'levelC2'], spliceOptions);
@@ -551,7 +551,7 @@ describe('sc-broker client', function () {
         return client.get(['levelC1', 'levelC2']);
       })
       .then((value) => {
-        var expected = ['d', 'e'];
+        let expected = ['d', 'e'];
         assert(JSON.stringify(value) === JSON.stringify(expected));
       });
     });
@@ -559,7 +559,7 @@ describe('sc-broker client', function () {
     it('should splice values test4', function () {
       return client.set(['levelD1', 'levelD2'], itemsD)
       .then(() => {
-        var spliceOptions = {
+        let spliceOptions = {
           items: ['a', 'b']
         };
         return client.splice(['levelD1', 'levelD2'], spliceOptions);
@@ -568,7 +568,7 @@ describe('sc-broker client', function () {
         return client.get(['levelD1', 'levelD2']);
       })
       .then((value) => {
-        var expected = ['a', 'b', 'c', 'd', 'e'];
+        let expected = ['a', 'b', 'c', 'd', 'e'];
         assert(JSON.stringify(value) === JSON.stringify(expected));
       });
     });
@@ -576,7 +576,7 @@ describe('sc-broker client', function () {
     it('should splice values test5', function () {
       client.set(['levelE1', 'levelE2'], itemsE)
       .then(() => {
-        var spliceOptions = {
+        let spliceOptions = {
           fromIndex: 2,
           count: 0,
           items: [{key1: 1, key2: {nestedKey1: 'hi'}}, 'c']
@@ -587,12 +587,12 @@ describe('sc-broker client', function () {
         return Promise.all([
           client.get(['levelE1', 'levelE2'])
           .then((value) => {
-            var expected = ['a', 'b', {key1: 1, key2: {nestedKey1: 'hi'}}, 'c'];
+            let expected = ['a', 'b', {key1: 1, key2: {nestedKey1: 'hi'}}, 'c'];
             assert(JSON.stringify(value) === JSON.stringify(expected));
           }),
           client.get(['levelE1', 'levelE2', 2, 'key2'])
           .then((value) => {
-            var expected = {nestedKey1: 'hi'};
+            let expected = {nestedKey1: 'hi'};
             assert(JSON.stringify(value) === JSON.stringify(expected));
           })
         ]);
@@ -600,12 +600,12 @@ describe('sc-broker client', function () {
     });
   });
 
-  var ch1 = 'foo';
-  var ch2 = 'bar';
-  var ch3 = 'allowOnce';
-  var badChannel = 'badChannel';
-  var silentChannel = 'silentChannel';
-  var delayedChannel = 'delayedChannel';
+  let ch1 = 'foo';
+  let ch2 = 'bar';
+  let ch3 = 'allowOnce';
+  let badChannel = 'badChannel';
+  let silentChannel = 'silentChannel';
+  let delayedChannel = 'delayedChannel';
 
   describe('client#subscriptions', function () {
     it('should have no subscriptions (empty array)', function () {
@@ -634,7 +634,7 @@ describe('sc-broker client', function () {
     });
 
     it('should stay in the subscribed state if the second subscribe request fails for channel ' + ch3, function () {
-      var error = null;
+      let error = null;
       return client.subscribe(ch3)
       .then(() => {
         return client.isSubscribed(ch3);
@@ -675,19 +675,19 @@ describe('sc-broker client', function () {
     });
 
     it('can be delayed by middleware', function () {
-      var start = Date.now();
+      let start = Date.now();
       return client.subscribe(delayedChannel)
       .then(() => {
-        var duration = Date.now() - start;
+        let duration = Date.now() - start;
         assert.equal(duration >= 500, true);
         return client.unsubscribe(delayedChannel);
       });
     });
 
     it('should recover subscriptions after regaining lost connection to server', function () {
-      var start = Date.now();
-      var originalSubs = [];
-      var receivedMessages = [];
+      let start = Date.now();
+      let originalSubs = [];
+      let receivedMessages = [];
       return client.subscribe(ch1)
       .then(() => {
         return client.subscribe(ch2);
@@ -768,10 +768,10 @@ describe('sc-broker client', function () {
     });
 
     it('can be delayed by middleware', function () {
-      var start = Date.now();
+      let start = Date.now();
       return client.publish(delayedChannel, ['a','b'])
       .then(() => {
-        var duration = Date.now() - start;
+        let duration = Date.now() - start;
         assert.equal(duration >= 500, true);
       });
     });
@@ -795,7 +795,7 @@ describe('sc-broker client', function () {
 
   describe('client#sendMessage', function () {
     it('can send data to broker', function () {
-      var startTime;
+      let startTime;
       return client.sendMessage('hello')
       .then(() => {
         startTime = Date.now();
@@ -815,7 +815,7 @@ describe('sc-broker client', function () {
     });
   });
 
-  var etsec = 1;
+  let etsec = 1;
   describe('client#expire', function () {
     it('value should be expired 1000ms after the given time.', function (done) {
       client.set(['check', 'expire', 'key'], 'some data')
@@ -824,7 +824,7 @@ describe('sc-broker client', function () {
         setTimeout(() => {
           client.get(['check'])
           .then((value) => {
-            var expected = {
+            let expected = {
               expire: {}
             };
             assert(JSON.stringify(value) === JSON.stringify(expected));
@@ -836,13 +836,13 @@ describe('sc-broker client', function () {
   });
 
 
-  var val9 = 'This is a value';
-  var path9 = ['a', 'b', 'c'];
-  var path10 = ['d', 'e', 'f'];
-  var path11 = ['that', '8a788b9c-c50e-0b3f-bd47-ec0c63327bf1'];
-  var path12 = ['g', 'h', 'i'];
-  var somePath = ['jlkfjsl'];
-  var someObject123 = {hello: 'world'};
+  let val9 = 'This is a value';
+  let path9 = ['a', 'b', 'c'];
+  let path10 = ['d', 'e', 'f'];
+  let path11 = ['that', '8a788b9c-c50e-0b3f-bd47-ec0c63327bf1'];
+  let path12 = ['g', 'h', 'i'];
+  let somePath = ['jlkfjsl'];
+  let someObject123 = {hello: 'world'};
 
   describe('client#set', function () {
     it('should provide client.set', function (done) {
@@ -881,7 +881,7 @@ describe('sc-broker client', function () {
         return client.get('that');
       })
       .then((value) => {
-        var expected = {
+        let expected = {
           '8a788b9c-c50e-0b3f-bd47-ec0c63327bf1': [6, 7, 8]
         };
         assert(JSON.stringify(value) === JSON.stringify(expected));
@@ -950,7 +950,7 @@ describe('sc-broker client', function () {
 
   describe('client#end', function () {
     it('should not reject', function () {
-      var client = scBroker.createClient(conf);
+      let client = scBroker.createClient(conf);
       return client.end();
     });
   });

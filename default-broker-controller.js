@@ -1,2 +1,2 @@
-var SCBroker = require('./scbroker');
+const SCBroker = require('./scbroker');
 new SCBroker();

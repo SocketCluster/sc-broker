@@ -1,10 +1,10 @@
 module.exports = function (scBroker) {
-  var hasSeenAllowOnceChannelAlready = false;
+  let hasSeenAllowOnceChannelAlready = false;
 
   scBroker.addMiddleware(scBroker.MIDDLEWARE_SUBSCRIBE, async (req) => {
     if (req.channel === 'allowOnce') {
       if (hasSeenAllowOnceChannelAlready) {
-        var onlyOnceError = new Error('Can only subscribe once to the allowOnce channel')
+        let onlyOnceError = new Error('Can only subscribe once to the allowOnce channel')
         onlyOnceError.name = 'OnlyOnceError';
         throw onlyOnceError;
       }
