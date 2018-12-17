@@ -17,8 +17,7 @@ var DEFAULT_IPC_ACK_TIMEOUT = 10000;
 
 var brokerInitOptions = JSON.parse(process.env.brokerInitOptions);
 
-var EventEmitter = require('events').EventEmitter;
-
+var StreamDemux = require('stream-demux');
 var async = require('async');
 var fs = require('fs');
 var uuid = require('uuid');
@@ -158,9 +157,10 @@ function SCBroker(options) {
     throw err;
   }
 
-  EventEmitter.call(this);
   options = options || {};
   scBroker = this;
+
+  this._listenerDemux = new StreamDemux();
 
   this.id = BROKER_ID;
   this.debugPort = DEBUG_PORT;
@@ -186,8 +186,6 @@ SCBroker.create = function (options) {
   return new SCBroker(options);
 };
 
-SCBroker.prototype = Object.create(EventEmitter.prototype);
-
 SCBroker.prototype._init = function (options) {
   this.options = options;
   this.instanceId = this.options.instanceId;
@@ -201,6 +199,18 @@ SCBroker.prototype._init = function (options) {
 };
 
 SCBroker.prototype.run = function () {};
+
+SCBroker.prototype.emit = function (eventName, data) {
+  this._listenerDemux.write(eventName, data);
+};
+
+SCBroker.prototype.listener = function (eventName) {
+  return this._listenerDemux.stream(eventName);
+};
+
+SCBroker.prototype.closeListener = function (eventName) {
+  this._listenerDemux.close(eventName);
+};
 
 SCBroker.prototype.sendMessageToMaster = function (data) {
   var messagePacket = {
@@ -253,7 +263,9 @@ SCBroker.prototype._passThroughMiddleware = function (command, socket, cb) {
   var applyEachMiddleware = (type, req, cb) => {
     async.applyEachSeries(this._middleware[type], req, (err) => {
       if (callbackInvoked) {
-        this.emit('warning', new InvalidActionError(`Callback for ${type} middleware was already invoked`));
+        this.emit('warning', {
+          warning: new InvalidActionError(`Callback for ${type} middleware was already invoked`)
+        });
       } else {
         callbackInvoked = true;
         cb(err, req);
@@ -471,7 +483,9 @@ var actions = {
     var hasListener = anyHasListener(command.channel);
     addListener(socket, command.channel);
     if (!hasListener) {
-      scBroker.emit('subscribe', command.channel);
+      scBroker.emit('subscribe', {
+        channel: command.channel
+      });
     }
     send(socket, {id: command.id, type: 'response', action: 'subscribe', channel: command.channel}, pubSubOptions);
   },
@@ -481,14 +495,19 @@ var actions = {
       removeListener(socket, command.channel);
       var hasListener = anyHasListener(command.channel);
       if (!hasListener) {
-        scBroker.emit('unsubscribe', command.channel);
+        scBroker.emit('unsubscribe', {
+          channel: command.channel
+        });
       }
     } else {
       var channels = removeAllListeners(socket);
       for (var i in channels) {
+        // TODO 2: Use forEach
         if (channels.hasOwnProperty(i)) {
           if (!anyHasListener(channels[i])) {
-            scBroker.emit('unsubscribe', channels[i]);
+            scBroker.emit('unsubscribe', {
+              channel: channels[i]
+            });
           }
         }
       }
@@ -512,27 +531,37 @@ var actions = {
     if (command.getValue) {
       response.value = command.value;
     }
-    scBroker.emit('publish', command.channel, command.value);
+    scBroker.emit('publish', {
+      channel: command.channel,
+      data: command.value
+    });
     send(socket, response, pubSubOptions);
   },
 
   sendRequest: function (command, socket) {
-    scBroker.emit('request', command.value, (err, data) => {
-      var response = {
-        id: command.id,
-        type: 'response',
-        action: 'sendRequest',
-        value: data
-      };
-      if (err) {
-        response.error = scErrors.dehydrateError(err, true);
+    scBroker.emit('request', {
+      data: command.value,
+      end: (data) => {
+        send(socket, {
+          id: command.id,
+          type: 'response',
+          action: 'sendRequest',
+          value: data
+        });
+      },
+      error: (err) => {
+        send(socket, {
+          id: command.id,
+          type: 'response',
+          action: 'sendRequest',
+          error: scErrors.dehydrateError(err, true)
+        });
       }
-      send(socket, response);
     });
   },
 
   sendMessage: function (command, socket) {
-    scBroker.emit('message', command.value);
+    scBroker.emit('message', {data: command.value});
   }
 };
 
@@ -588,7 +617,9 @@ var handleConnection = function (sock) {
     for (var i in channels) {
       if (channels.hasOwnProperty(i)) {
         if (!anyHasListener(channels[i])) {
-          scBroker.emit('unsubscribe', channels[i]);
+          scBroker.emit('unsubscribe', {
+            channel: channels[i]
+          });
         }
       }
     }
@@ -623,7 +654,9 @@ process.on('message', function (m) {
   if (m) {
     if (m.type === 'masterMessage') {
       if (scBroker) {
-        scBroker.emit('masterMessage', m.data);
+        scBroker.emit('masterMessage', {
+          data: m.data
+        });
       } else {
         var errorMessage = 'Cannot send message to broker with id ' + BROKER_ID +
         ' because the broker was not instantiated';
@@ -632,14 +665,24 @@ process.on('message', function (m) {
       }
     } else if (m.type === 'masterRequest') {
       if (scBroker) {
-        scBroker.emit('masterRequest', m.data, (err, data) => {
-          process.send({
-            type: 'brokerResponse',
-            brokerId: scBroker.id,
-            error: scErrors.dehydrateError(err, true),
-            data: data,
-            rid: m.cid
-          });
+        scBroker.emit('masterRequest', {
+          data: m.data,
+          end: (data) => {
+            process.send({
+              type: 'brokerResponse',
+              brokerId: scBroker.id,
+              data: data,
+              rid: m.cid
+            });
+          },
+          error: (err) => {
+            process.send({
+              type: 'brokerResponse',
+              brokerId: scBroker.id,
+              error: scErrors.dehydrateError(err, true),
+              rid: m.cid
+            });
+          }
         });
       } else {
         var errorMessage = 'Cannot send request to broker with id ' + BROKER_ID +

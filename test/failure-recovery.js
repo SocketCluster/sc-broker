@@ -22,33 +22,40 @@ var testFinished = false;
 
 describe('sc-broker failure handling and recovery', function () {
 
-  before('run the server before start', function (done) {
+  before('run the server before start', async function () {
     // Set up the server to auto-relaunch on crash
     var launchServer = () => {
       if (testFinished) {
         return;
       }
       server = scBroker.createServer(conf);
-      server.on('error', (err) => {
-        console.error('server error:', err);
-      });
-      server.on('exit', launchServer);
+      (async () => {
+        for await (let {error} of server.listener('error')) {
+          console.error('server error:', error);
+        }
+      })();
+
+      (async () => {
+        await server.listener('exit').once();
+        launchServer();
+      })();
     };
     launchServer();
 
     client = scBroker.createClient(conf);
-    client.on('error', (err) => {
-      console.error('client error', err);
-    });
-    server.on('ready', () => {
-      done();
-    });
+    (async () => {
+      for await (let {error} of client.listener('error')) {
+        console.error('client error', error);
+      }
+    })();
+    await server.listener('ready').once();
   });
 
-  after('shut down server afterwards', function (done) {
+  after('shut down server afterwards', async function () {
     testFinished = true;
+    client.closeListener('error');
+    server.closeListener('error');
     server.destroy();
-    done();
   });
 
   it('should be able to handle failure and gracefully recover from it', function (done) {
@@ -75,7 +82,12 @@ describe('sc-broker failure handling and recovery', function () {
       }
     };
 
-    client.on('message', handleMessage);
+    (async () => {
+      for await (let {channel, data} of client.listener('message')) {
+        handleMessage(channel, data);
+      }
+    })();
+
     client.subscribe('foo')
     .then(() => {
       var doPublish = () => {

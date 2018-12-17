@@ -1,5 +1,6 @@
+// TODO 2: Use const and let instead of var
 var fork = require('child_process').fork;
-var EventEmitter = require('events').EventEmitter;
+var StreamDemux = require('stream-demux');
 var ComSocket = require('ncom').ComSocket;
 var FlexiMap = require('fleximap').FlexiMap;
 var uuid = require('uuid');
@@ -13,9 +14,7 @@ var HOST = '127.0.0.1';
 var DEFAULT_CONNECT_RETRY_ERROR_THRESHOLD = 20;
 var DEFAULT_IPC_ACK_TIMEOUT = 10000;
 
-var Server = function (options) {
-  EventEmitter.call(this);
-
+function Server(options) {
   var defaultBrokerControllerPath = __dirname + '/default-broker-controller.js';
 
   var serverOptions = {
@@ -30,6 +29,7 @@ var Server = function (options) {
   };
 
   this.options = options;
+  this._listenerDemux = new StreamDemux();
 
   this._pendingResponseHandlers = {};
 
@@ -91,25 +91,38 @@ var Server = function (options) {
     return err;
   };
 
-  this._server.on('error', (error) => {
-    var err = formatError(error);
-    this.emit('error', err);
+  this._server.on('error', (err) => {
+    var error = formatError(err);
+    this.emit('error', {error});
   });
 
   this._server.on('message', (value) => {
     if (value.type === 'error') {
-      var err = formatError(value.data);
-      this.emit('error', err);
+      var error = formatError(value.data);
+      this.emit('error', {error});
     } else if (value.type === 'brokerMessage') {
-      this.emit('brokerMessage', value.brokerId, value.data);
+      this.emit('brokerMessage', {
+        brokerId: value.brokerId,
+        data: value.data
+      });
     } else if (value.type === 'brokerRequest') {
-      this.emit('brokerRequest', value.brokerId, value.data, (err, data) => {
-        this._server.send({
-          type: 'masterResponse',
-          error: scErrors.dehydrateError(err, true),
-          data: data,
-          rid: value.cid
-        });
+      this.emit('brokerRequest', {
+        brokerId: value.brokerId,
+        data: value.data,
+        end: (data) => {
+          this._server.send({
+            type: 'masterResponse',
+            data: data,
+            rid: value.cid
+          });
+        },
+        error: (err) => {
+          this._server.send({
+            type: 'masterResponse',
+            error: scErrors.dehydrateError(err, true),
+            rid: value.cid
+          });
+        }
       });
     } else if (value.type === 'brokerResponse') {
       var responseHandler = this._pendingResponseHandlers[value.rid];
@@ -120,7 +133,7 @@ var Server = function (options) {
         responseHandler.callback(properError, value.data);
       }
     } else if (value.type === 'listening') {
-      this.emit('ready', value.data);
+      this.emit('ready', {brokerInfo: value.data});
     }
   });
 
@@ -152,7 +165,17 @@ var Server = function (options) {
   };
 };
 
-Server.prototype = Object.create(EventEmitter.prototype);
+Server.prototype.emit = function (eventName, data) {
+  this._listenerDemux.write(eventName, data);
+};
+
+Server.prototype.listener = function (eventName) {
+  return this._listenerDemux.stream(eventName);
+};
+
+Server.prototype.closeListener = function (eventName) {
+  this._listenerDemux.close(eventName);
+};
 
 Server.prototype.sendMessageToBroker = function (data) {
   var messagePacket = {
@@ -194,9 +217,11 @@ module.exports.createServer = function (options) {
   return new Server(options);
 };
 
-var Client = function (options) {
+function Client(options) {
   var secretKey = options.secretKey || null;
   var timeout = options.timeout;
+
+  this._listenerDemux = new StreamDemux();
 
   this.socketPath = options.socketPath;
   this.port = options.port;
@@ -268,15 +293,15 @@ var Client = function (options) {
     }
 
     this._socket.on('connect', this._connectHandler);
-    this._socket.on('error', (err) => {
-      var isConnectionFailure = err.code === 'ENOENT' || err.code === 'ECONNREFUSED';
+    this._socket.on('error', (error) => {
+      var isConnectionFailure = error.code === 'ENOENT' || error.code === 'ECONNREFUSED';
       var isBelowRetryThreshold = this.connectAttempts < this.connectRetryErrorThreshold;
 
       // We can tolerate a few missed reconnections without emitting a full error.
-      if (isConnectionFailure && isBelowRetryThreshold && err.address === options.socketPath) {
-        this.emit('warning', err);
+      if (isConnectionFailure && isBelowRetryThreshold && error.address === options.socketPath) {
+        this.emit('warning', {warning: error});
       } else {
-        this.emit('error', err);
+        this.emit('error', {error});
       }
     });
     this._socket.on('close', handleDisconnection);
@@ -308,7 +333,7 @@ var Client = function (options) {
         // code (such as the subscribe call) return Promises which resolve
         // on the next tick.
         setTimeout(() => {
-          this.emit('message', packet.channel, packet.value);
+          this.emit('message', {channel: packet.channel, data: packet.value});
         }, 0);
       }
     });
@@ -316,8 +341,6 @@ var Client = function (options) {
 
   this._curID = 1;
   this.MAX_ID = Math.pow(2, 53) - 2;
-
-  this.setMaxListeners(0);
 
   this._tryReconnect = (initialDelay) => {
     var exponent = this.connectAttempts++;
@@ -441,7 +464,9 @@ var Client = function (options) {
       return this.subscribe(channel)
       .catch((err) => {
         var errorMessage = err.message || err;
-        this.emit('error', new BrokerError('Failed to resubscribe to broker channel - ' + errorMessage));
+        this.emit('error', {
+          error: new BrokerError('Failed to resubscribe to broker channel - ' + errorMessage)
+        });
       });
     });
     return Promise.all(subscribePromises);
@@ -452,16 +477,16 @@ var Client = function (options) {
       action: 'init',
       secretKey: secretKey
     };
-    var initHandler = (err, brokerInfo) => {
-      if (err) {
-        this.emit('error', err);
+    var initHandler = (error, brokerInfo) => {
+      if (error) {
+        this.emit('error', {error});
       } else {
         this.state = this.CONNECTED;
         this.connectAttempts = 0;
         this._resubscribeAll()
         .then(() => {
           this._flushPendingBuffers();
-          this.emit('ready', brokerInfo);
+          this.emit('ready', {brokerInfo});
         });
       }
     };
@@ -530,7 +555,17 @@ var Client = function (options) {
   };
 };
 
-Client.prototype = Object.create(EventEmitter.prototype);
+Client.prototype.emit = function (eventName, data) {
+  this._listenerDemux.write(eventName, data);
+};
+
+Client.prototype.listener = function (eventName) {
+  return this._listenerDemux.stream(eventName);
+};
+
+Client.prototype.closeListener = function (eventName) {
+  this._listenerDemux.close(eventName);
+};
 
 Client.prototype.isConnected = function () {
   return this.state === this.CONNECTED;

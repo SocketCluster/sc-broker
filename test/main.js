@@ -30,23 +30,28 @@ var client;
 
 describe('sc-broker client', function () {
 
-  before('run the server before start', function (done) {
+  before('run the server before start', async function () {
     server = scBroker.createServer(conf);
-    server.on('error', (err) => {
-      console.log('SERVER ERROR:', err);
-    });
+    (async () => {
+      for await (let {error} of server.listener('error')) {
+        console.log('SERVER ERROR:', error);
+      }
+    })();
+
     client = scBroker.createClient(conf);
-    client.on('error', (err) => {
-      console.log('CLIENT ERROR:', err);
-    });
-    server.on('ready', () => {
-      done();
-    });
+    (async () => {
+      for await (let {error} of client.listener('error')) {
+        console.log('CLIENT ERROR:', error);
+      }
+    })();
+
+    await server.listener('ready').once();
   });
 
-  after('shut down server afterwards', function (done) {
+  after('shut down server afterwards', async function () {
     server.destroy();
-    done();
+    client.closeListener('error');
+    server.closeListener('error');
   });
 
   describe('sc-broker#executeCommandWhenClientIsDisconnected', function () {
@@ -80,11 +85,6 @@ describe('sc-broker client', function () {
   });
 
   describe('sc-broker#createServer', function () {
-    it('should provide server.on', function (done) {
-      assert(_.isFunction(server.on), true);
-      done();
-    });
-
     it('should provide server.destroy', function (done) {
       assert(_.isFunction(server.destroy), true);
       done();
@@ -143,25 +143,31 @@ describe('sc-broker client', function () {
   describe('broker-controller#sendRequestToMaster', function () {
     var currentTestCallbacks = {};
 
-    before('prepare message responder on master', function (done) {
-      server.on('brokerRequest', (brokerId, data, respond) => {
-        if (data.sendBackError) {
-          var err = new Error('This is an error');
-          err.name = 'CustomMasterError';
-          respond(err);
-        } else if (!data.doNothing) {
-          var responseData = {
-            hello: data.brokerSubject
-          };
-          respond(null, responseData);
+    before('prepare message responder on master', async function () {
+      (async () => {
+        for await (let req of server.listener('brokerRequest')) {
+          let data = req.data;
+          if (data.sendBackError) {
+            var err = new Error('This is an error');
+            err.name = 'CustomMasterError';
+            req.error(err);
+          } else if (!data.doNothing) {
+            var responseData = {
+              hello: data.brokerSubject
+            };
+            req.end(responseData);
+          }
         }
-      });
-      server.on('brokerMessage', (brokerId, data) => {
-        if (data.brokerTestResult) {
-          currentTestCallbacks[data.brokerTestResult](data.err, data.data);
+      })();
+
+      (async () => {
+        for await (let req of server.listener('brokerMessage')) {
+          let data = req.data;
+          if (data.brokerTestResult) {
+            currentTestCallbacks[data.brokerTestResult](data.err, data.data);
+          }
         }
-      });
-      done();
+      })();
     });
 
     it('should be able to send a message to the master and get a response', function (done) {
@@ -704,12 +710,14 @@ describe('sc-broker client', function () {
         return Promise.all([
           Promise.resolve()
           .then(() => {
-            client.on('message', (channel, value) => {
-              receivedMessages.push({
-                channel: channel,
-                value: value
-              });
-            });
+            (async () => {
+              for await (let {channel, data} of client.listener('message')) {
+                receivedMessages.push({
+                  channel,
+                  data
+                });
+              }
+            })();
           })
           .then(() => {
             // Add a delay before sending publish to allow the client
@@ -720,11 +728,7 @@ describe('sc-broker client', function () {
             assert.equal(client.state, client.DISCONNECTED);
             return client.publish(delayedChannel, 'delayedMessage');
           }),
-          new Promise((resolve, reject) => {
-            client.on('ready', () => {
-              resolve();
-            });
-          })
+          client.listener('ready').once()
         ]);
       })
       .then(() => {
@@ -737,7 +741,7 @@ describe('sc-broker client', function () {
         return wait(1000);
       })
       .then(() => {
-        assert.equal(receivedMessages.some((message) => { return message && message.value === 'delayedMessage'; }), true);
+        assert.equal(receivedMessages.some((message) => { return message && message.data === 'delayedMessage'; }), true);
       });
     });
   });
