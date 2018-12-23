@@ -17,11 +17,11 @@
   ],
   "dependencies": {
     "async": "^2.6.1",
+    "async-stream-emitter": "^1.1.0",
     "expirymanager": "^0.9.3",
     "fleximap": "^1.0.0",
     "ncom": "^1.0.2",
     "sc-errors": "^1.4.1",
-    "stream-demux": "^4.0.4",
     "uuid": "3.1.0"
   },
   "devDependencies": {

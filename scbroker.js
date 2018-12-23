@@ -17,7 +17,7 @@ const DEFAULT_IPC_ACK_TIMEOUT = 10000;
 
 let brokerInitOptions = JSON.parse(process.env.brokerInitOptions);
 
-const StreamDemux = require('stream-demux');
+const AsyncStreamEmitter = require('async-stream-emitter');
 const async = require('async');
 const fs = require('fs');
 const uuid = require('uuid');
@@ -146,6 +146,8 @@ function handleMasterResponse(message) {
 let scBroker;
 
 function SCBroker(options) {
+  AsyncStreamEmitter.call(this);
+
   if (scBroker) {
     let err = new BrokerError('Attempted to instantiate a broker which has already been instantiated');
     throw err;
@@ -153,8 +155,6 @@ function SCBroker(options) {
 
   options = options || {};
   scBroker = this;
-
-  this._listenerDemux = new StreamDemux();
 
   this.id = BROKER_ID;
   this.debugPort = DEBUG_PORT;
@@ -176,6 +176,8 @@ function SCBroker(options) {
   this._init(brokerInitOptions);
 }
 
+SCBroker.prototype = Object.create(AsyncStreamEmitter.prototype);
+
 SCBroker.create = function (options) {
   return new SCBroker(options);
 };
@@ -193,18 +195,6 @@ SCBroker.prototype._init = function (options) {
 };
 
 SCBroker.prototype.run = function () {};
-
-SCBroker.prototype.emit = function (eventName, data) {
-  this._listenerDemux.write(eventName, data);
-};
-
-SCBroker.prototype.listener = function (eventName) {
-  return this._listenerDemux.stream(eventName);
-};
-
-SCBroker.prototype.closeListener = function (eventName) {
-  this._listenerDemux.close(eventName);
-};
 
 SCBroker.prototype.sendMessageToMaster = function (data) {
   let messagePacket = {

@@ -1,5 +1,5 @@
 const fork = require('child_process').fork;
-const StreamDemux = require('stream-demux');
+const AsyncStreamEmitter = require('async-stream-emitter');
 const ComSocket = require('ncom').ComSocket;
 const FlexiMap = require('fleximap').FlexiMap;
 const uuid = require('uuid');
@@ -14,6 +14,8 @@ const DEFAULT_CONNECT_RETRY_ERROR_THRESHOLD = 20;
 const DEFAULT_IPC_ACK_TIMEOUT = 10000;
 
 function Server(options) {
+  AsyncStreamEmitter.call(this);
+
   let defaultBrokerControllerPath = __dirname + '/default-broker-controller.js';
 
   let serverOptions = {
@@ -28,7 +30,6 @@ function Server(options) {
   };
 
   this.options = options;
-  this._listenerDemux = new StreamDemux();
 
   this._pendingResponseHandlers = {};
 
@@ -162,19 +163,9 @@ function Server(options) {
 
     return cid;
   };
-};
+}
 
-Server.prototype.emit = function (eventName, data) {
-  this._listenerDemux.write(eventName, data);
-};
-
-Server.prototype.listener = function (eventName) {
-  return this._listenerDemux.stream(eventName);
-};
-
-Server.prototype.closeListener = function (eventName) {
-  this._listenerDemux.close(eventName);
-};
+Server.prototype = Object.create(AsyncStreamEmitter.prototype);
 
 Server.prototype.sendMessageToBroker = function (data) {
   let messagePacket = {
@@ -217,10 +208,10 @@ module.exports.createServer = function (options) {
 };
 
 function Client(options) {
+  AsyncStreamEmitter.call(this);
+
   let secretKey = options.secretKey || null;
   let timeout = options.timeout;
-
-  this._listenerDemux = new StreamDemux();
 
   this.socketPath = options.socketPath;
   this.port = options.port;
@@ -552,19 +543,9 @@ function Client(options) {
 
     return query;
   };
-};
+}
 
-Client.prototype.emit = function (eventName, data) {
-  this._listenerDemux.write(eventName, data);
-};
-
-Client.prototype.listener = function (eventName) {
-  return this._listenerDemux.stream(eventName);
-};
-
-Client.prototype.closeListener = function (eventName) {
-  this._listenerDemux.close(eventName);
-};
+Client.prototype = Object.create(AsyncStreamEmitter.prototype);
 
 Client.prototype.isConnected = function () {
   return this.state === this.CONNECTED;
