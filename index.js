@@ -112,7 +112,7 @@ function Server(options) {
         end: (data) => {
           this._server.send({
             type: 'masterResponse',
-            data: data,
+            data,
             rid: value.cid
           });
         },
