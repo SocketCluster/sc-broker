@@ -19,7 +19,7 @@ function Server(options) {
   let defaultBrokerControllerPath = __dirname + '/default-broker-controller.js';
 
   let serverOptions = {
-    id: options.id,
+    brokerId: options.brokerId,
     debug: options.debug,
     socketPath: options.socketPath,
     port: options.port,
@@ -139,7 +139,7 @@ function Server(options) {
 
   this._server.on('exit', (code, signal) => {
     this.emit('exit', {
-      id: options.id,
+      brokerId: options.brokerId,
       pid: this._server.pid,
       code,
       signal

@@ -4,7 +4,7 @@ let PORT;
 if (args.port) {
   PORT = parseInt(args.port);
 }
-const BROKER_ID = args.id || 0;
+const BROKER_ID = args.brokerId || 0;
 const SOCKET_PATH = args.socketPath;
 const EXPIRY_ACCURACY = args.expiryAccuracy || 1000;
 const BROKER_CONTROLLER_PATH = args.brokerControllerPath;
