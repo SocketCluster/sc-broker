@@ -211,7 +211,7 @@ function Client(options) {
   AsyncStreamEmitter.call(this);
 
   let secretKey = options.secretKey || null;
-  let timeout = options.timeout;
+  this._timeout = options.timeout == null ? 10000 : options.timeout;
 
   this.socketPath = options.socketPath;
   this.port = options.port;
@@ -255,12 +255,6 @@ function Client(options) {
   this.DISCONNECTED = 'disconnected';
 
   this.state = this.DISCONNECTED;
-
-  if (timeout) {
-    this._timeout = timeout;
-  } else {
-    this._timeout = 10000;
-  }
 
   // Only keeps track of the intention of subscription, not the actual state.
   this._subscriptionMap = {};
@@ -569,7 +563,6 @@ Client.prototype.extractValues = function (object) {
 Client.prototype.subscribe = function (channel) {
   return new Promise((resolve, reject) => {
     this._subscriptionMap[channel] = true;
-
     let command = {
       action: 'subscribe',
       channel: channel
