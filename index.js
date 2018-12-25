@@ -133,7 +133,7 @@ function Server(options) {
         responseHandler.callback(properError, value.data);
       }
     } else if (value.type === 'listening') {
-      this.emit('ready', {brokerInfo: value.data});
+      this.emit('ready', value.data);
     }
   });
 
@@ -476,7 +476,7 @@ function Client(options) {
         this._resubscribeAll()
         .then(() => {
           this._flushPendingBuffers();
-          this.emit('ready', {brokerInfo});
+          this.emit('ready', brokerInfo);
         });
       }
     };

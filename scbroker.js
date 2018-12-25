@@ -293,7 +293,7 @@ let pubSubOptions = {
 let actions = {
   init: function (command, socket) {
     let brokerInfo = {
-      id: BROKER_ID,
+      brokerId: BROKER_ID,
       pid: process.pid
     };
     let result = {id: command.id, type: 'response', action: 'init', value: brokerInfo};
@@ -610,7 +610,7 @@ comServer.on('connection', handleConnection);
 
 comServer.on('listening', function () {
   let brokerInfo = {
-    id: BROKER_ID,
+    brokerId: BROKER_ID,
     pid: process.pid
   };
   process.send({
