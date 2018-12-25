@@ -635,9 +635,7 @@ process.on('message', function (m) {
   if (m) {
     if (m.type === 'masterMessage') {
       if (scBroker) {
-        scBroker.emit('masterMessage', {
-          data: m.data
-        });
+        scBroker.emit('masterMessage', m.data);
       } else {
         let errorMessage = `Cannot send message to broker with id ${BROKER_ID} ` +
           'because the broker was not instantiated';

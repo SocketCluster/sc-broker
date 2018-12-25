@@ -157,7 +157,7 @@ function Server(options) {
     }, this.ipcAckTimeout);
 
     this._pendingResponseHandlers[cid] = {
-      callback: callback,
+      callback,
       timeout: responseTimeout
     };
 
@@ -401,7 +401,7 @@ function Client(options) {
       return;
     }
     command.id = this._genID();
-    let request = {callback: callback};
+    let request = {callback};
     this._commandTracker[command.id] = request;
 
     request.timeout = setTimeout(() => {
