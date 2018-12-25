@@ -405,7 +405,9 @@ function Client(options) {
     this._commandTracker[command.id] = request;
 
     request.timeout = setTimeout(() => {
-      let error = new TimeoutError('Broker Error - The ' + command.action + ' action timed out');
+      let error = new TimeoutError(
+        `Broker Error - The ${command.action} action timed out`
+      );
       delete request.callback;
       if (this._commandTracker.hasOwnProperty(command.id)) {
         delete this._commandTracker[command.id];
@@ -450,12 +452,15 @@ function Client(options) {
 
   // Recovers subscriptions after Broker server crash
   this._resubscribeAll = () => {
-    let subscribePromises = Object.keys(this._subscriptionMap || {}).map((channel) => {
+    let subscribePromises = Object.keys(this._subscriptionMap || {})
+    .map((channel) => {
       return this.subscribe(channel)
       .catch((err) => {
         let errorMessage = err.message || err;
         this.emit('error', {
-          error: new BrokerError('Failed to resubscribe to broker channel - ' + errorMessage)
+          error: new BrokerError(
+            `Failed to resubscribe to broker channel - ${errorMessage}`
+          )
         });
       });
     });
@@ -532,9 +537,9 @@ function Client(options) {
 
     Object.keys(data || {}).forEach((i) => {
       if (!validVarNameRegex.test(i)) {
-        throw new BrokerError("The variable name '" + i + "' is invalid");
+        throw new BrokerError(`The variable name "${i}" is invalid`);
       }
-      headerString += 'let ' + i + '=' + JSON.stringify(data[i]) + ';';
+      headerString += `let ${i}=${JSON.stringify(data[i])};`;
     });
 
     query = query.replace(/^(function *[(][^)]*[)] *{)/, (match) => {

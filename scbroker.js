@@ -49,9 +49,10 @@ if (DOWNGRADE_TO_USER && process.setuid) {
   try {
     process.setuid(DOWNGRADE_TO_USER);
   } catch (err) {
-    sendErrorToMaster(new BrokerError('Could not downgrade to user "' + DOWNGRADE_TO_USER +
-      '" - Either this user does not exist or the current process does not have the permission' +
-      ' to switch to it'));
+    sendErrorToMaster(new BrokerError(
+      `Could not downgrade to user "${DOWNGRADE_TO_USER}" - Either this user does not exist ` +
+      `or the current process does not have the permission to switch to it`
+    ));
   }
 }
 
@@ -110,7 +111,7 @@ let exec = function (query, baseKey) {
     rebasedDataMap = dataMap;
   }
 
-  return Function('"use strict"; return (' + query + ')(arguments[0], arguments[1], arguments[2]);')(rebasedDataMap, dataExpirer, subscriptions);
+  return Function(`"use strict"; return (${query})(arguments[0], arguments[1], arguments[2]);`)(rebasedDataMap, dataExpirer, subscriptions);
 };
 
 let pendingResponseHandlers = {};
@@ -638,8 +639,8 @@ process.on('message', function (m) {
           data: m.data
         });
       } else {
-        let errorMessage = 'Cannot send message to broker with id ' + BROKER_ID +
-        ' because the broker was not instantiated';
+        let errorMessage = `Cannot send message to broker with id ${BROKER_ID} ` +
+          'because the broker was not instantiated';
         let err = new BrokerError(errorMessage);
         sendErrorToMaster(err);
       }
@@ -665,8 +666,8 @@ process.on('message', function (m) {
           }
         });
       } else {
-        let errorMessage = 'Cannot send request to broker with id ' + BROKER_ID +
-        ' because the broker was not instantiated';
+        let errorMessage = `Cannot send request to broker with id ${BROKER_ID} ` +
+          'because the broker was not instantiated';
         let err = new BrokerError(errorMessage);
         sendErrorToMaster(err);
       }
