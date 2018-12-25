@@ -141,8 +141,8 @@ function Server(options) {
     this.emit('exit', {
       id: options.id,
       pid: this._server.pid,
-      code: code,
-      signal: signal
+      code,
+      signal
     });
   });
 
