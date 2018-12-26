@@ -101,10 +101,7 @@ function Server(options) {
       let error = formatError(value.data);
       this.emit('error', {error});
     } else if (value.type === 'brokerMessage') {
-      this.emit('brokerMessage', {
-        brokerId: value.brokerId,
-        data: value.data
-      });
+      this.emit('brokerMessage', {data: value.data});
     } else if (value.type === 'brokerRequest') {
       this.emit('brokerRequest', {
         brokerId: value.brokerId,
@@ -170,7 +167,7 @@ Server.prototype = Object.create(AsyncStreamEmitter.prototype);
 Server.prototype.sendMessageToBroker = function (data) {
   let messagePacket = {
     type: 'masterMessage',
-    data: data
+    data
   };
   this._server.send(messagePacket);
   return Promise.resolve();
@@ -180,7 +177,7 @@ Server.prototype.sendRequestToBroker = function (data) {
   return new Promise((resolve, reject) => {
     let messagePacket = {
       type: 'masterRequest',
-      data: data
+      data
     };
     messagePacket.cid = this._createIPCResponseHandler((err, result) => {
       if (err) {
@@ -230,16 +227,16 @@ function Client(options) {
 
     let reconnectOptions = options.autoReconnectOptions;
     if (reconnectOptions.initialDelay == null) {
-      reconnectOptions.initialDelay = 50;
+      reconnectOptions.initialDelay = 100;
     }
     if (reconnectOptions.randomness == null) {
-      reconnectOptions.randomness = 50;
+      reconnectOptions.randomness = 100;
     }
     if (reconnectOptions.multiplier == null) {
       reconnectOptions.multiplier = 1.1;
     }
     if (reconnectOptions.maxDelay == null) {
-      reconnectOptions.maxDelay = 200;
+      reconnectOptions.maxDelay = 500;
     }
     this.autoReconnectOptions = reconnectOptions;
   }
@@ -258,6 +255,7 @@ function Client(options) {
 
   // Only keeps track of the intention of subscription, not the actual state.
   this._subscriptionMap = {};
+  this._pendingSubscriptionMap = {};
   this._commandTracker = {};
   this._pendingBuffer = [];
 
@@ -315,7 +313,7 @@ function Client(options) {
         // the execution order. This is necessary because other parts of the
         // code (such as the subscribe call) return Promises which resolve
         // on the next tick.
-        setTimeout(() => { // TODO 2: Check if the timeout is still needed.
+        setTimeout(() => {
           this.emit('message', {channel: packet.channel, data: packet.value});
         }, 0);
       }
@@ -356,14 +354,14 @@ function Client(options) {
     return 'n' + this._curID;
   };
 
-  this._flushSubscriptionMap = () => {
-    Object.values(this._subscriptionMap).forEach((commandData) => {
+  this._flushPendingSubscriptionMap = () => {
+    Object.values(this._pendingSubscriptionMap).forEach((commandData) => {
       this._execCommand(commandData.command, commandData.options);
     });
   };
 
   this._flushPendingBuffers = () => {
-    this._flushSubscriptionMap();
+    this._flushPendingSubscriptionMap();
 
     let bufLen = this._pendingBuffer.length;
     for (let j = 0; j < bufLen; j++) {
@@ -373,9 +371,9 @@ function Client(options) {
     this._pendingBuffer = [];
   };
 
-  this._flushSubscriptionMapIfConnected = () => {
+  this._flushPendingSubscriptionMapIfConnected = () => {
     if (this.state === this.CONNECTED) {
-      this._flushSubscriptionMap();
+      this._flushPendingSubscriptionMap();
     }
   };
 
@@ -549,6 +547,7 @@ Client.prototype.extractValues = function (object) {
 
 Client.prototype.subscribe = function (channel) {
   return new Promise((resolve, reject) => {
+    this._subscriptionMap[channel] = true;
     let command = {
       action: 'subscribe',
       channel
@@ -562,36 +561,43 @@ Client.prototype.subscribe = function (channel) {
     };
     let execOptions = this._getPubSubExecOptions();
 
-    let existingCommandData = this._subscriptionMap[channel];
+    let existingCommandData = this._pendingSubscriptionMap[channel];
     if (existingCommandData) {
       existingCommandData.callbacks.push(callback);
     } else {
-      this._subscriptionMap[channel] = {
+      this._pendingSubscriptionMap[channel] = {
         command,
         options: execOptions,
         callbacks: [callback]
       };
-      // TODO 2
       this._prepareAndTrackCommand(command, (err, data) => {
-        let commandData = this._subscriptionMap[channel];
-        if (commandData && (!err || err.name !== 'TimeoutError')) {
-          let callbackList = commandData.callbacks;
-          commandData.callbacks = [];
-          callbackList.forEach((callback) => {
-            callback(err, data);
-          });
+        let commandData = this._pendingSubscriptionMap[channel];
+        if (commandData) {
+          if (!err) {
+            delete this._pendingSubscriptionMap[channel];
+            commandData.callbacks.forEach((callback) => {
+              callback(err, data);
+            });
+          } else if (err.name !== 'TimeoutError') {
+            delete this._subscriptionMap[channel];
+            delete this._pendingSubscriptionMap[channel];
+            commandData.callbacks.forEach((callback) => {
+              callback(err, data);
+            });
+          }
         }
       });
     }
 
     this._connect();
-    this._flushSubscriptionMapIfConnected();
+    this._flushPendingSubscriptionMapIfConnected();
   });
 };
 
 Client.prototype.unsubscribe = function (channel) {
   return new Promise((resolve, reject) => {
     delete this._subscriptionMap[channel];
+    delete this._pendingSubscriptionMap[channel];
 
     if (this.state === this.CONNECTED) {
       let command = {
@@ -610,23 +616,21 @@ Client.prototype.unsubscribe = function (channel) {
   });
 };
 
-Client.prototype.subscriptions = function () {
-  let command = {
-    action: 'subscriptions'
-  };
-
-  let execOptions = this._getPubSubExecOptions();
-  return this._processCommand(command, execOptions);
+Client.prototype.subscriptions = function (includePending) {
+  let subscriptions = Object.keys(this._subscriptionMap);
+  if (includePending) {
+    return subscriptions;
+  }
+  return subscriptions.filter((channel) => {
+    return !this._pendingSubscriptionMap[channel];
+  });
 };
 
-Client.prototype.isSubscribed = function (channel) {
-  let command = {
-    action: 'isSubscribed',
-    channel
-  };
-
-  let execOptions = this._getPubSubExecOptions();
-  return this._processCommand(command, execOptions);
+Client.prototype.isSubscribed = function (channel, includePending) {
+  if (includePending) {
+    return this._subscriptionMap.hasOwnProperty(channel);
+  }
+  return !!this._subscriptionMap[channel] && !this._pendingSubscriptionMap[channel];
 };
 
 Client.prototype.publish = function (channel, value) {
@@ -859,9 +863,7 @@ Client.prototype.exec = function (query, options) {
   Returns a Promise.
 */
 Client.prototype.query = function (query, data) {
-  let options = {
-    data: data
-  };
+  let options = {data};
   return this.exec(query, options);
 };
 

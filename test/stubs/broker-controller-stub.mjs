@@ -24,13 +24,13 @@ class BrokerControllerStub extends SCBroker {
     })();
 
     (async () => {
-      for await (let data of this.listener('message')) {
-        dataBuffer.push(data);
+      for await (let event of this.listener('message')) {
+        dataBuffer.push(event);
       }
     })();
 
     (async () => {
-      for await (let data of this.listener('masterMessage')) {
+      for await (let {data} of this.listener('masterMessage')) {
         if (data.killBroker) {
           console.log('Broker is shutting down');
           process.exit();
@@ -43,7 +43,7 @@ class BrokerControllerStub extends SCBroker {
               .then((data) => {
                 this.sendMessageToMaster({
                   brokerTestResult: 'test1',
-                  data: data
+                  data
                 });
               })
               .catch((err) => {
@@ -59,7 +59,7 @@ class BrokerControllerStub extends SCBroker {
               .then((data) => {
                 this.sendMessageToMaster({
                   brokerTestResult: 'test2',
-                  data: data
+                  data
                 });
               })
               .catch((err) => {
@@ -75,7 +75,7 @@ class BrokerControllerStub extends SCBroker {
               .then((data) => {
                 this.sendMessageToMaster({
                   brokerTestResult: 'test3',
-                  data: data
+                  data
                 });
               })
               .catch((err) => {

@@ -161,8 +161,8 @@ describe('sc-broker client', function () {
       })();
 
       (async () => {
-        for await (let req of server.listener('brokerMessage')) {
-          let data = req.data;
+        for await (let event of server.listener('brokerMessage')) {
+          let data = event.data;
           if (data.brokerTestResult) {
             currentTestCallbacks[data.brokerTestResult](data.err, data.data);
           }
@@ -600,48 +600,51 @@ describe('sc-broker client', function () {
     });
   });
 
-  let ch1 = 'foo';
-  let ch2 = 'bar';
-  let ch3 = 'allowOnce';
+  let fooChannel = 'foo';
+  let barChannel = 'bar';
+  let allowOnceChannel = 'allowOnce';
   let badChannel = 'badChannel';
   let silentChannel = 'silentChannel';
   let delayedChannel = 'delayedChannel';
 
   describe('client#subscriptions', function () {
     it('should have no subscriptions (empty array)', function () {
-      return client.subscriptions()
+      return Promise.resolve()
+      .then(() => {
+        return client.subscriptions();
+      })
       .then((result) => {
         assert(JSON.stringify(result) === JSON.stringify([]));
       });
     });
 
     it('should not reject', function () {
-      return client.subscribe(ch1);
+      return client.subscribe(fooChannel);
     });
 
-    it('should subscribe channel ' + ch1, function () {
-      return client.subscribe(ch1)
+    it('should subscribe channel ' + fooChannel, function () {
+      return client.subscribe(fooChannel)
       .then(() => {
-        return client.isSubscribed(ch1);
+        return client.isSubscribed(fooChannel);
       })
       .then((result) => {
         assert.equal(result, true);
         return client.subscriptions();
       })
       .then((result) => {
-        assert(JSON.stringify(result) === JSON.stringify([ch1]));
+        assert(JSON.stringify(result) === JSON.stringify([fooChannel]));
       });
     });
 
-    it('should stay in the subscribed state if the second subscribe request fails for channel ' + ch3, function () {
+    it('should go in the unsubscribed state if the second subscribe request fails for channel ' + allowOnceChannel, function () {
       let error = null;
-      return client.subscribe(ch3)
+      return client.subscribe(allowOnceChannel)
       .then(() => {
-        return client.isSubscribed(ch3);
+        return client.isSubscribed(allowOnceChannel);
       })
       .then((result) => {
         assert.equal(result, true);
-        return client.subscribe(ch3);
+        return client.subscribe(allowOnceChannel);
       })
       .catch((err) => {
         error = err;
@@ -649,11 +652,11 @@ describe('sc-broker client', function () {
       })
       .then(() => {
         assert.notEqual(error, null);
-        return client.isSubscribed(ch3);
+        return client.isSubscribed(allowOnceChannel);
       })
       .then((result) => {
-        assert.equal(result, true);
-        return client.unsubscribe(ch3);
+        assert.equal(result, false);
+        return client.unsubscribe(allowOnceChannel);
       })
     });
 
@@ -688,9 +691,9 @@ describe('sc-broker client', function () {
       let start = Date.now();
       let originalSubs = [];
       let receivedMessages = [];
-      return client.subscribe(ch1)
+      return client.subscribe(fooChannel)
       .then(() => {
-        return client.subscribe(ch2);
+        return client.subscribe(barChannel);
       })
       .then(() => {
         return client.subscribe(badChannel)
@@ -748,13 +751,13 @@ describe('sc-broker client', function () {
 
   describe('client#unsubscriptions', function () {
     it('should not reject', function () {
-      return client.unsubscribe(ch2);
+      return client.unsubscribe(barChannel);
     });
   });
 
   describe('client#publish', function () {
     it('should not reject', function () {
-      return client.publish(ch2, ['a','b']);
+      return client.publish(barChannel, ['a','b']);
     });
 
     it('can be blocked by middleware', function () {
@@ -777,7 +780,7 @@ describe('sc-broker client', function () {
     });
 
     it('can be transformed by middleware', function () {
-      return client.publish(ch2, 'test message')
+      return client.publish(barChannel, 'test message')
       .then((value) => {
         assert.strictEqual(value, 'transformed test message');
       });
@@ -810,7 +813,7 @@ describe('sc-broker client', function () {
         return client.sendRequest({getDataBuffer: true})
       })
       .then((dataBuffer) => {
-        assert.equal(JSON.stringify(dataBuffer), JSON.stringify(['hello', 'world']));
+        assert.equal(JSON.stringify(dataBuffer), JSON.stringify([{data: 'hello'}, {data: 'world'}]));
       });
     });
   });

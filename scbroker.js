@@ -200,8 +200,7 @@ SCBroker.prototype.run = function () {};
 SCBroker.prototype.sendMessageToMaster = function (data) {
   let messagePacket = {
     type: 'brokerMessage',
-    brokerId: this.id,
-    data: data
+    data
   };
   process.send(messagePacket);
   return Promise.resolve();
@@ -212,7 +211,7 @@ SCBroker.prototype.sendRequestToMaster = function (data) {
     let messagePacket = {
       type: 'brokerRequest',
       brokerId: this.id,
-      data: data
+      data
     };
     messagePacket.cid = createIPCResponseHandler(this.ipcAckTimeout, (err, result) => {
       if (err) {
@@ -635,7 +634,7 @@ process.on('message', function (m) {
   if (m) {
     if (m.type === 'masterMessage') {
       if (scBroker) {
-        scBroker.emit('masterMessage', m.data);
+        scBroker.emit('masterMessage', {data: m.data});
       } else {
         let errorMessage = `Cannot send message to broker with id ${BROKER_ID} ` +
           'because the broker was not instantiated';
@@ -650,7 +649,7 @@ process.on('message', function (m) {
             process.send({
               type: 'brokerResponse',
               brokerId: scBroker.id,
-              data: data,
+              data,
               rid: m.cid
             });
           },
