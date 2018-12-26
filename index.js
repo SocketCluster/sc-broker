@@ -452,17 +452,15 @@ function Client(options) {
       action: 'init',
       secretKey: secretKey
     };
-    let initHandler = (error, brokerInfo) => {
+    let initHandler = async (error, brokerInfo) => {
       if (error) {
         this.emit('error', {error});
       } else {
         this.state = this.CONNECTED;
         this.connectAttempts = 0;
-        this._resubscribeAll()
-        .then(() => { // TODO 2 use async await
-          this._flushPendingBuffers();
-          this.emit('ready', brokerInfo);
-        });
+        await this._resubscribeAll();
+        this._flushPendingBuffers();
+        this.emit('ready', brokerInfo);
       }
     };
     this._prepareAndTrackCommand(command, initHandler);
@@ -490,7 +488,6 @@ function Client(options) {
     this.pendingReconnect = false;
     this.pendingReconnectTimeout = null;
     clearTimeout(this._reconnectTimeoutRef);
-    this._pendingBuffer = [];
     this._tryReconnect();
   };
 

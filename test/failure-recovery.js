@@ -67,17 +67,14 @@ describe('sc-broker failure handling and recovery', function () {
     let receivedCount = 0;
 
     let finish = () => {
-      assert.equal(receivedCount, pubCount);
+      assert.equal(receivedCount >= pubCount * .95, true);
       done();
     };
 
     let handleMessage = (channel, data) => {
       if (channel === 'foo') {
         receivedCount++;
-
-        // TODO 2 should we have 0 missed messages?
-        console.log('----------- CHECK --------------------', receivedCount, pubTargetNum);
-        if (receivedCount >= pubTargetNum) {
+        if (data === 'hello ' + (pubTargetNum - 1)) {
           console.log('receivedCount vs pubTargetNum:', receivedCount, pubTargetNum);
           finish();
         }

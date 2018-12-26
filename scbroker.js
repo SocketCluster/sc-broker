@@ -496,16 +496,6 @@ let actions = {
     send(socket, {id: command.id, type: 'response', action: 'unsubscribe', channel: command.channel}, pubSubOptions);
   },
 
-  isSubscribed: function (command, socket) {
-    let result = hasListener(socket, command.channel);
-    send(socket, {id: command.id, type: 'response', action: 'isSubscribed', channel: command.channel, value: result}, pubSubOptions);
-  },
-
-  subscriptions: function (command, socket) {
-    let result = getSubscriptions(socket);
-    send(socket, {id: command.id, type: 'response', action: 'subscriptions', value: result}, pubSubOptions);
-  },
-
   publish: function (command, socket) {
     scBroker.publish(command.channel, command.value);
     let response = {id: command.id, type: 'response', action: 'publish', channel: command.channel};
