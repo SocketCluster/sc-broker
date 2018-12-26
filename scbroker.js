@@ -183,16 +183,20 @@ SCBroker.create = function (options) {
   return new SCBroker(options);
 };
 
-SCBroker.prototype._init = function (options) {
+SCBroker.prototype._init = async function (options) {
   this.options = options;
   this.instanceId = this.options.instanceId;
   this.secretKey = this.options.secretKey;
   this.ipcAckTimeout = this.options.ipcAckTimeout || DEFAULT_IPC_ACK_TIMEOUT;
 
   let runResult = this.run();
-  Promise.resolve(runResult)
-  .then(comServerListen)
-  .catch(exitWithError);
+  try {
+    await Promise.resolve(runResult);
+  } catch (err) {
+    exitWithError(err);
+    return;
+  }
+  comServerListen();
 };
 
 SCBroker.prototype.run = function () {};

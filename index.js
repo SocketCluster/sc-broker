@@ -12,6 +12,8 @@ const DEFAULT_PORT = 9435;
 const HOST = '127.0.0.1';
 const DEFAULT_CONNECT_RETRY_ERROR_THRESHOLD = 20;
 const DEFAULT_IPC_ACK_TIMEOUT = 10000;
+const DEFAULT_COMMAND_ACK_TIMEOUT = 10000;
+const DEFAULT_PUB_SUB_ACK_TIMEOUT = 4000;
 
 function Server(options) {
   AsyncStreamEmitter.call(this);
@@ -208,7 +210,10 @@ function Client(options) {
   AsyncStreamEmitter.call(this);
 
   let secretKey = options.secretKey || null;
-  this._timeout = options.ackTimeout == null ? 10000 : options.ackTimeout;
+  this._commandTimeout = options.commandAckTimeout == null ?
+    DEFAULT_COMMAND_ACK_TIMEOUT : options.commandAckTimeout;
+  this._pubSubTimeout = options.pubSubAckTimeout == null ?
+    DEFAULT_PUB_SUB_ACK_TIMEOUT : options.pubSubAckTimeout;
 
   this.socketPath = options.socketPath;
   this.port = options.port;
@@ -363,8 +368,8 @@ function Client(options) {
   this._flushPendingBuffers = () => {
     this._flushPendingSubscriptionMap();
 
-    let bufLen = this._pendingBuffer.length;
-    for (let j = 0; j < bufLen; j++) {
+    let len = this._pendingBuffer.length;
+    for (let j = 0; j < len; j++) {
       let commandData = this._pendingBuffer[j];
       this._execCommand(commandData.command, commandData.options);
     }
@@ -383,29 +388,34 @@ function Client(options) {
     }
   };
 
-  this._prepareAndTrackCommand = (command, callback) => {
+  this._prepareAndTrackCommand = (command, callback, options) => {
     if (command.noAck) {
       callback();
       return;
     }
     command.id = this._genID();
-    let request = {callback};
+    let request = {
+      action: command.action,
+      callback
+    };
     this._commandTracker[command.id] = request;
 
-    request.timeout = setTimeout(() => {
-      let error = new TimeoutError(
-        `Broker Error - The ${command.action} action timed out`
-      );
-      delete request.callback;
-      if (this._commandTracker.hasOwnProperty(command.id)) {
+    if (!options || !options.noTimeout) {
+      let timeout = options && options.ackTimeout != null ?
+      options.ackTimeout : this._commandTimeout;
+
+      request.timeout = setTimeout(() => {
+        let error = new TimeoutError(
+          `Broker Error - The ${command.action} action timed out`
+        );
         delete this._commandTracker[command.id];
-      }
-      callback(error);
-    }, this._timeout);
+        callback(error);
+      }, timeout);
+    }
   };
 
   this._bufferCommand = (command, callback, options) => {
-    this._prepareAndTrackCommand(command, callback);
+    this._prepareAndTrackCommand(command, callback, options);
     // Clone the command argument to prevent the user from modifying the data
     // whilst the command is still pending in the buffer.
     let commandData = {
@@ -502,6 +512,7 @@ function Client(options) {
     if (options.pubSubBatchDuration != null) {
       execOptions.batch = true;
     }
+    execOptions.ackTimeout = this._pubSubTimeout;
     return execOptions;
   };
 
@@ -570,20 +581,15 @@ Client.prototype.subscribe = function (channel) {
       this._prepareAndTrackCommand(command, (err, data) => {
         let commandData = this._pendingSubscriptionMap[channel];
         if (commandData) {
-          if (!err) {
-            delete this._pendingSubscriptionMap[channel];
-            commandData.callbacks.forEach((callback) => {
-              callback(err, data);
-            });
-          } else if (err.name !== 'TimeoutError') {
+          if (err) {
             delete this._subscriptionMap[channel];
-            delete this._pendingSubscriptionMap[channel];
-            commandData.callbacks.forEach((callback) => {
-              callback(err, data);
-            });
           }
+          delete this._pendingSubscriptionMap[channel];
+          commandData.callbacks.forEach((callback) => {
+            callback(err, data);
+          });
         }
-      });
+      }, {noTimeout: true});
     }
 
     this._connect();
@@ -998,44 +1004,42 @@ Client.prototype.hasKey = function (key) {
   end()
   Returns a Promise.
 */
-Client.prototype.end = function () {
+Client.prototype.end = async function () {
   clearTimeout(this._reconnectTimeoutRef);
-  return this.unsubscribe()
-  .then(() => {
-    return new Promise((resolve, reject) => {
-      let disconnectCallback = () => {
-        if (disconnectTimeout) {
-          clearTimeout(disconnectTimeout);
-        }
-        setTimeout(() => {
-          resolve();
-        }, 0);
-        this._socket.removeListener('end', disconnectCallback);
-      };
-
-      let disconnectTimeout = setTimeout(() => {
-        this._socket.removeListener('end', disconnectCallback);
-        let error = new TimeoutError('Disconnection timed out');
-        reject(error);
-      }, this._timeout);
-
-      if (this._socket.connected) {
-        this._socket.on('end', disconnectCallback);
-      } else {
-        disconnectCallback();
+  await this.unsubscribe();
+  return new Promise((resolve, reject) => {
+    let disconnectCallback = () => {
+      if (disconnectTimeout) {
+        clearTimeout(disconnectTimeout);
       }
-      let setDisconnectStatus = () => {
-        this._socket.removeListener('end', setDisconnectStatus);
-        this.state = this.DISCONNECTED;
-      };
-      if (this._socket.connected) {
-        this._socket.on('end', setDisconnectStatus);
-        this._socket.end();
-      } else {
-        this._socket.destroy();
-        this.state = this.DISCONNECTED;
-      }
-    });
+      setTimeout(() => {
+        resolve();
+      }, 0);
+      this._socket.removeListener('end', disconnectCallback);
+    };
+
+    let disconnectTimeout = setTimeout(() => {
+      this._socket.removeListener('end', disconnectCallback);
+      let error = new TimeoutError('Disconnection timed out');
+      reject(error);
+    }, this._commandTimeout);
+
+    if (this._socket.connected) {
+      this._socket.on('end', disconnectCallback);
+    } else {
+      disconnectCallback();
+    }
+    let setDisconnectStatus = () => {
+      this._socket.removeListener('end', setDisconnectStatus);
+      this.state = this.DISCONNECTED;
+    };
+    if (this._socket.connected) {
+      this._socket.on('end', setDisconnectStatus);
+      this._socket.end();
+    } else {
+      this._socket.destroy();
+      this.state = this.DISCONNECTED;
+    }
   });
 };
 

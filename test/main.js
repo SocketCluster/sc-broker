@@ -753,6 +753,15 @@ describe('sc-broker client', function () {
     it('should not reject', function () {
       return client.unsubscribe(barChannel);
     });
+
+    it('should remove subscriptions', function () {
+      let originalSubscriptions = client.subscriptions();
+      return client.unsubscribe(originalSubscriptions[0])
+      .then(() => {
+        let newSubscriptions = client.subscriptions();
+        assert.notEqual(JSON.stringify(newSubscriptions), JSON.stringify(originalSubscriptions));
+      });
+    });
   });
 
   describe('client#publish', function () {
