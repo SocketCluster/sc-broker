@@ -211,7 +211,7 @@ function Client(options) {
   AsyncStreamEmitter.call(this);
 
   let secretKey = options.secretKey || null;
-  this._timeout = options.timeout == null ? 10000 : options.timeout;
+  this._timeout = options.ackTimeout == null ? 10000 : options.ackTimeout;
 
   this.socketPath = options.socketPath;
   this.port = options.port;
@@ -230,16 +230,16 @@ function Client(options) {
 
     let reconnectOptions = options.autoReconnectOptions;
     if (reconnectOptions.initialDelay == null) {
-      reconnectOptions.initialDelay = 200;
+      reconnectOptions.initialDelay = 50;
     }
     if (reconnectOptions.randomness == null) {
-      reconnectOptions.randomness = 100;
+      reconnectOptions.randomness = 50;
     }
     if (reconnectOptions.multiplier == null) {
-      reconnectOptions.multiplier = 1.3;
+      reconnectOptions.multiplier = 1.1;
     }
     if (reconnectOptions.maxDelay == null) {
-      reconnectOptions.maxDelay = 1000;
+      reconnectOptions.maxDelay = 200;
     }
     this.autoReconnectOptions = reconnectOptions;
   }
@@ -260,7 +260,6 @@ function Client(options) {
   this._subscriptionMap = {};
   this._commandTracker = {};
   this._pendingBuffer = [];
-  this._pendingSubscriptionBuffer = [];
 
   this.connectAttempts = 0;
   this.pendingReconnect = false;
@@ -316,7 +315,7 @@ function Client(options) {
         // the execution order. This is necessary because other parts of the
         // code (such as the subscribe call) return Promises which resolve
         // on the next tick.
-        setTimeout(() => {
+        setTimeout(() => { // TODO 2: Check if the timeout is still needed.
           this.emit('message', {channel: packet.channel, data: packet.value});
         }, 0);
       }
@@ -357,17 +356,14 @@ function Client(options) {
     return 'n' + this._curID;
   };
 
-  this._flushPendingSubscriptionBuffers = () => {
-    let subBufLen = this._pendingSubscriptionBuffer.length;
-    for (let i = 0; i < subBufLen; i++) {
-      let subCommandData = this._pendingSubscriptionBuffer[i];
-      this._execCommand(subCommandData.command, subCommandData.options);
-    }
-    this._pendingSubscriptionBuffer = [];
+  this._flushSubscriptionMap = () => {
+    Object.values(this._subscriptionMap).forEach((commandData) => {
+      this._execCommand(commandData.command, commandData.options);
+    });
   };
 
   this._flushPendingBuffers = () => {
-    this._flushPendingSubscriptionBuffers();
+    this._flushSubscriptionMap();
 
     let bufLen = this._pendingBuffer.length;
     for (let j = 0; j < bufLen; j++) {
@@ -377,9 +373,9 @@ function Client(options) {
     this._pendingBuffer = [];
   };
 
-  this._flushPendingSubscriptionBuffersIfConnected = () => {
+  this._flushSubscriptionMapIfConnected = () => {
     if (this.state === this.CONNECTED) {
-      this._flushPendingSubscriptionBuffers();
+      this._flushSubscriptionMap();
     }
   };
 
@@ -410,15 +406,6 @@ function Client(options) {
     }, this._timeout);
   };
 
-  this._bufferSubscriptionCommand = (command, callback, options) => {
-    this._prepareAndTrackCommand(command, callback);
-    let commandData = {
-      command: command,
-      options: options
-    };
-    this._pendingSubscriptionBuffer.push(commandData);
-  };
-
   this._bufferCommand = (command, callback, options) => {
     this._prepareAndTrackCommand(command, callback);
     // Clone the command argument to prevent the user from modifying the data
@@ -445,20 +432,21 @@ function Client(options) {
   };
 
   // Recovers subscriptions after Broker server crash
-  this._resubscribeAll = () => {
+  this._resubscribeAll = async () => {
     let subscribePromises = Object.keys(this._subscriptionMap || {})
-    .map((channel) => {
-      return this.subscribe(channel)
-      .catch((err) => {
+    .map(async (channel) => {
+      try {
+        await this.subscribe(channel);
+      } catch (err) {
         let errorMessage = err.message || err;
         this.emit('error', {
           error: new BrokerError(
             `Failed to resubscribe to broker channel - ${errorMessage}`
           )
         });
-      });
+      }
     });
-    return Promise.all(subscribePromises);
+    await Promise.all(subscribePromises);
   };
 
   this._connectHandler = () => {
@@ -473,7 +461,7 @@ function Client(options) {
         this.state = this.CONNECTED;
         this.connectAttempts = 0;
         this._resubscribeAll()
-        .then(() => {
+        .then(() => { // TODO 2 use async await
           this._flushPendingBuffers();
           this.emit('ready', brokerInfo);
         });
@@ -505,7 +493,6 @@ function Client(options) {
     this.pendingReconnectTimeout = null;
     clearTimeout(this._reconnectTimeoutRef);
     this._pendingBuffer = [];
-    this._pendingSubscriptionBuffer = [];
     this._tryReconnect();
   };
 
@@ -562,14 +549,12 @@ Client.prototype.extractValues = function (object) {
 
 Client.prototype.subscribe = function (channel) {
   return new Promise((resolve, reject) => {
-    this._subscriptionMap[channel] = true;
     let command = {
       action: 'subscribe',
-      channel: channel
+      channel
     };
     let callback = (err) => {
       if (err) {
-        delete this._subscriptionMap[channel];
         reject(err);
         return;
       }
@@ -577,37 +562,51 @@ Client.prototype.subscribe = function (channel) {
     };
     let execOptions = this._getPubSubExecOptions();
 
+    let existingCommandData = this._subscriptionMap[channel];
+    if (existingCommandData) {
+      existingCommandData.callbacks.push(callback);
+    } else {
+      this._subscriptionMap[channel] = {
+        command,
+        options: execOptions,
+        callbacks: [callback]
+      };
+      // TODO 2
+      this._prepareAndTrackCommand(command, (err, data) => {
+        let commandData = this._subscriptionMap[channel];
+        if (commandData && (!err || err.name !== 'TimeoutError')) {
+          let callbackList = commandData.callbacks;
+          commandData.callbacks = [];
+          callbackList.forEach((callback) => {
+            callback(err, data);
+          });
+        }
+      });
+    }
+
     this._connect();
-    this._bufferSubscriptionCommand(command, callback, execOptions);
-    this._flushPendingSubscriptionBuffersIfConnected();
+    this._flushSubscriptionMapIfConnected();
   });
 };
 
 Client.prototype.unsubscribe = function (channel) {
   return new Promise((resolve, reject) => {
     delete this._subscriptionMap[channel];
+
     if (this.state === this.CONNECTED) {
       let command = {
         action: 'unsubscribe',
-        channel: channel
+        channel
       };
-
-      let callback = (err) => {
-        // Unsubscribe can never fail because TCP guarantees
-        // delivery for the life of the connection. If the
-        // connection fails then all subscriptions
-        // will be cleared automatically anyway.
-        resolve();
-      };
-
       let execOptions = this._getPubSubExecOptions();
-      this._bufferSubscriptionCommand(command, callback, execOptions);
-      this._flushPendingSubscriptionBuffersIfConnected();
-    } else {
-      // No need to unsubscribe if the server is disconnected
-      // The server cleans up automatically in case of disconnection
-      resolve();
+      this._execCommand(command, execOptions);
     }
+
+    // Unsubscribe can never fail because TCP guarantees
+    // delivery for the life of the connection. If the
+    // connection fails then all subscriptions
+    // will be cleared automatically anyway.
+    resolve();
   });
 };
 
@@ -623,7 +622,7 @@ Client.prototype.subscriptions = function () {
 Client.prototype.isSubscribed = function (channel) {
   let command = {
     action: 'isSubscribed',
-    channel: channel
+    channel
   };
 
   let execOptions = this._getPubSubExecOptions();
@@ -633,8 +632,8 @@ Client.prototype.isSubscribed = function (channel) {
 Client.prototype.publish = function (channel, value) {
   let command = {
     action: 'publish',
-    channel: channel,
-    value: value,
+    channel,
+    value,
     getValue: 1
   };
 
@@ -668,8 +667,8 @@ Client.prototype.sendMessage = function (data) {
 Client.prototype.set = function (key, value, options) {
   let command = {
     action: 'set',
-    key: key,
-    value: value
+    key,
+    value
   };
 
   if (options && options.getValue) {
@@ -711,7 +710,7 @@ Client.prototype.unexpire = function (keys) {
 Client.prototype.getExpiry = function (key) {
   let command = {
     action: 'getExpiry',
-    key: key
+    key
   };
   return this._processCommand(command);
 };
@@ -723,8 +722,8 @@ Client.prototype.getExpiry = function (key) {
 Client.prototype.add = function (key, value) {
   let command = {
     action: 'add',
-    key: key,
-    value: value
+    key,
+    value
   };
 
   return this._processCommand(command);
@@ -737,8 +736,8 @@ Client.prototype.add = function (key, value) {
 Client.prototype.concat = function (key, value, options) {
   let command = {
     action: 'concat',
-    key: key,
-    value: value
+    key,
+    value
   };
 
   if (options && options.getValue) {
@@ -755,7 +754,7 @@ Client.prototype.concat = function (key, value, options) {
 Client.prototype.get = function (key) {
   let command = {
     action: 'get',
-    key: key
+    key
   };
 
   return this._processCommand(command);
@@ -768,7 +767,7 @@ Client.prototype.get = function (key) {
 Client.prototype.getRange = function (key, options) {
   let command = {
     action: 'getRange',
-    key: key
+    key
   };
 
   if (options) {
@@ -801,7 +800,7 @@ Client.prototype.getAll = function () {
 Client.prototype.count = function (key) {
   let command = {
     action: 'count',
-    key: key
+    key
   };
   return this._processCommand(command);
 };
@@ -873,7 +872,7 @@ Client.prototype.query = function (query, data) {
 Client.prototype.remove = function (key, options) {
   let command = {
     action: 'remove',
-    key: key
+    key
   };
 
   if (options) {
@@ -895,7 +894,7 @@ Client.prototype.remove = function (key, options) {
 Client.prototype.removeRange = function (key, options) {
   let command = {
     action: 'removeRange',
-    key: key
+    key
   };
 
   if (options) {
@@ -938,7 +937,7 @@ Client.prototype.removeAll = function () {
 Client.prototype.splice = function (key, options) {
   let command = {
     action: 'splice',
-    key: key
+    key
   };
 
   if (options) {
@@ -969,7 +968,7 @@ Client.prototype.splice = function (key, options) {
 Client.prototype.pop = function (key, options) {
   let command = {
     action: 'pop',
-    key: key
+    key
   };
 
   if (options) {
@@ -991,7 +990,7 @@ Client.prototype.pop = function (key, options) {
 Client.prototype.hasKey = function (key) {
   let command = {
     action: 'hasKey',
-    key: key
+    key
   };
   return this._processCommand(command);
 };
