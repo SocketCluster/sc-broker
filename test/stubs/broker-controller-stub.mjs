@@ -24,14 +24,13 @@ class BrokerControllerStub extends SCBroker {
     })();
 
     (async () => {
-      for await (let {data} of this.listener('message')) {
+      for await (let data of this.listener('message')) {
         dataBuffer.push(data);
       }
     })();
 
     (async () => {
-      for await (let event of this.listener('masterMessage')) {
-        let data = event.data;
+      for await (let data of this.listener('masterMessage')) {
         if (data.killBroker) {
           console.log('Broker is shutting down');
           process.exit();
