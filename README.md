@@ -39,7 +39,7 @@ Once the server is setup, you should create clients to interact with it.
 
 **Make sure that the server is running before creating clients**
 
-This ca be done in the following way:
+This can be done in the following way:
 
 ```js
 var conf = {port: 9000}
