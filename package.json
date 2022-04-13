@@ -16,7 +16,7 @@
     }
   ],
   "dependencies": {
-    "async": "^2.6.1",
+    "async": "^3.2.2",
     "expirymanager": "^0.9.3",
     "fleximap": "^1.0.0",
     "ncom": "^1.0.2",
